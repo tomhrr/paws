@@ -1,0 +1,11 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use App::Paws;
+
+my $paws = App::Paws->new();
+$paws->send_queued();
+
+1;

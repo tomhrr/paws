@@ -1,0 +1,16 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use App::Paws;
+
+use File::Basename;
+
+my $paws = App::Paws->new();
+$paws->send(\@ARGV, \*STDIN);
+
+my $dirname = dirname(__FILE__);
+system("$dirname/paws-send-queued &");
+
+1;
