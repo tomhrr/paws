@@ -1,12 +1,19 @@
 ## paws
 
-Send/receive Slack messages via email.
+Send/receive Slack messages via email.  Supports sending messages to
+Slack via a sendmail-like command, and receiving messages from Slack
+into maildirs.
 
 ### Install
 
     perl Makefile.PL
     make
+    make test
     sudo make install
+
+Alternatively, run `cpanm .` from within the checkout directory. This
+will fetch and install module dependencies, if required. See
+https://cpanmin.us.
 
 ### Usage
 
@@ -74,6 +81,9 @@ new messages from Slack into the configured maildirs.
  - The 'to' address for a Slack conversation has the form:
  
     `$conversation_name @ $workspace_name . $domain_name`
+
+ - Tested with [mutt 1.12.0](mutt.org), but should work with any MUA
+   that supports sendmail and maildirs.
 
 ### Licence
 
