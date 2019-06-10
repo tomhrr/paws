@@ -12,9 +12,10 @@ use App::Paws::Test::Server;
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
 use JSON::XS qw(encode_json);
+use MIME::Parser;
 use YAML;
 
-use Test::More tests => 7;
+use Test::More tests => 9;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -124,6 +125,7 @@ $paws->send_queued();
 $paws->receive(30);
 @files = `find $mail_dir -type f`;
 is(@files, 12, 'Still have 12 mails');
+my %files_by_name = map { $_ => 1 } @files;
 
 my $mail3 = File::Temp->new();
 print $mail3 q(MIME-Version: 1.0
@@ -162,6 +164,16 @@ $paws->send_queued();
 $paws->receive(40);
 @files = `find $mail_dir -type f`;
 is(@files, 13, 'Got extra mail (with attachment)');
+
+my $parser = MIME::Parser->new();
+my $tempdir = tempdir();
+$parser->output_under($tempdir);
+my ($new_file) = grep { not $files_by_name{$_} } @files;
+my $entity = $parser->parse_open($new_file);
+my @parts = $entity->parts();
+is(@parts, 2, 'Mail has two parts');
+is($parts[1]->head()->recommended_filename(), 'file',
+    'Attachment has correct filename');
 
 my $mail4 = File::Temp->new();
 print $mail4 q(Content-Type: text/plain; charset="UTF-8"

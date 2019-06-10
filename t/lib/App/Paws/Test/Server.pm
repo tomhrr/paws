@@ -171,7 +171,7 @@ my %thread_to_history = (
                 type => 'message',
                 files => [
                     {
-                        url_private => '/file?id=1',
+                        url_private => '/file/1',
                         mimetype => 'text/plain'
                     }
                 ],
@@ -262,9 +262,9 @@ sub _handle_request
                 ok => $true,
                 messages => $history
             }));
-        } elsif ($path eq '/file') {
+        } elsif ($path =~ /^\/file\/(.*)$/) {
             my %args = $r->uri()->query_form();
-            my $id = $args{'id'};
+            my $id = $1;
             $res->code(200);
             $res->content($files{$id});
         }
@@ -287,6 +287,26 @@ sub _handle_request
                 };
             $res->code(200);
         } elsif ($path eq '/files.upload') {
+            my $content = $r->content();
+            my ($separator) = ($content =~ /^(.*?\r\n)/);
+            my @parts = grep { $_ } split /$separator/, $content;
+            chomp $separator;
+            $parts[$#parts] =~ s/--.*--\r\n//;
+            my %data;
+            for my $part (@parts) {
+                my ($headers, $content) = ($part =~ /^(.*?)\r\n\r\n(.*)/s);
+                my ($name) = ($headers =~ /name="(.*?)"/);
+                $content =~ s/\r?\n$//;
+                $data{$name} = $content;
+            }
+            my $channel_id = $data{'channels'};
+            my $ref = $channel_id_to_history{$channel_id};
+            $ref->[$#{$ref}]->{'files'} ||= [];
+            push @{$ref->[$#{$ref}]->{'files'}},
+                { url_private => '/file/'.$data{'filename'},
+                  mimetype => 'text/plain' };
+            $files{$data{'filename'}} = $data{'file'};
+
             $res->code(200);
         }
     }

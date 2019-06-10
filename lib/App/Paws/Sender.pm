@@ -146,19 +146,20 @@ sub _send_queued_single
                 $text_data = $subentity->bodyhandle()->as_string();
                 next;
             }
+            my $fn = $subentity->head()->recommended_filename();
+            $fn =~ s/\?.*//;
             my $ft = File::Temp->new();
             print $ft $subentity->bodyhandle()->as_string();
             $ft->flush();
             push @fts, $ft;
             my $uri = URI->new($context->{'slack_base_url'}.'/files.upload');
-            my $fn = $subentity->head()->get('Content-Disposition');
-            my $r = ($fn =~ s/.*filename=(.*?)[;\b ]/$1/);
             my $sreq = POST($uri,
                             Content_Type => 'form-data',
                             Content      => [
-                                file => [$ft->filename()],
-                                ($r) ? (filename => $fn) : (),
-                                token => $token,
+                                file     => [$ft->filename()],
+                                filename => $fn,
+                                title    => $fn,
+                                token    => $token,
                                 channels => $conversation_id
                             ]);
             push @sreqs, $sreq;
