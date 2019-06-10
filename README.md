@@ -82,8 +82,8 @@ new messages from Slack into the configured maildirs.
  
     `$conversation_name @ $workspace_name . $domain_name`
 
- - Tested with [mutt 1.12.0](mutt.org), but should work with any MUA
-   that supports sendmail and maildirs.
+ - Tested with [mutt](http://mutt.org) 1.12.0, but should work with
+   any MUA that supports sendmail and maildirs.
 
 ### Licence
 
