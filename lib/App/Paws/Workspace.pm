@@ -113,12 +113,12 @@ sub get_history
     );
 }
 
-sub get_user_map
+sub _get_users
 {
     my ($self) = @_;
 
-    if ($self->{'user_map'}) {
-        return $self->{'user_map'};
+    if ($self->{'users'}) {
+        return $self->{'users'};
     }
 
     my $data = $self->standard_get_request(
@@ -138,14 +138,48 @@ sub get_user_map
         push @data_list, $data;
     }
 
+    my @users =
+        grep { not $_->{'deleted'} }
+        map  { @{$_->{'members'}} }
+            @data_list;
+
+    $self->{'users'} = \@users;
+
+    return \@users;
+}
+
+sub get_user_map
+{
+    my ($self) = @_;
+
+    if ($self->{'user_map'}) {
+        return $self->{'user_map'};
+    }
+
     my %user_map =
         map { $_->{'name'} => $_->{'id'} }
-        map { @{$_->{'members'}} }
-            @data_list;
+            @{$self->_get_users()};
 
     $self->{'user_map'} = \%user_map;
 
     return \%user_map;
+}
+
+sub get_user_list
+{
+    my ($self) = @_;
+
+    if ($self->{'user_list'}) {
+        return $self->{'user_list'};
+    }
+
+    my @user_list =
+        map { [ $_->{'real_name'}, $_->{'name'} ] }
+            @{$self->_get_users()};
+
+    $self->{'user_list'} = \@user_list;
+
+    return \@user_list;
 }
 
 1;

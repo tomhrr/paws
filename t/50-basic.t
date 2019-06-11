@@ -12,10 +12,11 @@ use App::Paws::Test::Server;
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
 use JSON::XS qw(encode_json);
+use List::Util qw(first);
 use MIME::Parser;
 use YAML;
 
-use Test::More tests => 9;
+use Test::More tests => 10;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -203,5 +204,12 @@ is(@files, 13, 'Still only 13 mails');
 $paws->receive(60);
 @files = `find $bounce_dir -type f`;
 is(@files, 1, 'Message correctly recorded as bounce');
+
+my @aliases = @{$paws->aliases()};
+my $found =
+    first { $_ eq 'alias slack-test-slackbot Slack Bot '.
+                  '<im/slackbot@test.slack.alt>' }
+        @aliases;
+ok($found, 'Found slackbot alias in alias list');
 
 1;

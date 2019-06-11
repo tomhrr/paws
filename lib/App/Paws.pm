@@ -82,4 +82,24 @@ sub receive
     return 1;
 }
 
+sub aliases
+{
+    my ($self) = @_;
+
+    my $context = $self->{'context'};
+    my $domain = $context->domain_name();
+    my @aliases;
+    for my $ws_name (keys %{$context->{'workspaces'}}) {
+        my $ws = $context->{'workspaces'}->{$ws_name};
+        my $user_list = $ws->get_user_list();
+        for my $user (@{$user_list}) {
+            my ($real_name, $username) = @{$user};
+            push @aliases,
+                 "alias slack-$ws_name-$username $real_name ".
+                 "<im/$username\@$ws_name.$domain>";
+        }
+    }
+    return \@aliases;
+}
+
 1;

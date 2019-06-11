@@ -79,14 +79,18 @@ my @ims = ({
 
 my @users = (
     { name => 'slackbot',
+      real_name => 'Slack Bot',
         id => 'USLACKBOT' },
     { id => 'U00000003',
+      real_name => 'User 3',
         name => 'user3' },
 );
 my @users2 = (
     { id => 'U00000002',
+      real_name => 'User 2',
         name => 'user2' },
     { id => 'U00000001',
+      real_name => 'User 1',
         name => 'user1' },
 );
 

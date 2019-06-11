@@ -82,8 +82,13 @@ new messages from Slack into the configured maildirs.
  
     `$conversation_name @ $workspace_name . $domain_name`
 
- - Tested with [mutt](http://mutt.org) 1.12.0, but should work with
+ - Tested with [Mutt](http://mutt.org) 1.12.0, but should work with
    any MUA that supports sendmail and maildirs.
+ - The `paws-aliases` command can be used to print a list of Slack
+   user alias entries, for use with Mutt.  An alias username has the
+   form:
+
+    `slack-$workspace_name-$user_name`
 
 ### Licence
 
