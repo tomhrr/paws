@@ -28,6 +28,11 @@ sub token
     return $_[0]->{'token'};
 }
 
+sub modification_window
+{
+    return $_[0]->{'modification_window'};
+}
+
 sub user_id_to_name
 {
     my ($self, $user_id) = @_;
@@ -47,7 +52,12 @@ sub conversation_to_name
                                            : 'channel';
     my $name = $conversation->{'name'};
     if (($type eq 'im') and not $name) {
-        $name = $self->user_id_to_name($conversation->{'user'});
+        my $user_id = $conversation->{'user'};
+        $name = $self->user_id_to_name($user_id);
+        if (not $name) {
+            warn "Unable to find name for user '$user_id'";
+            $name = 'unknown';
+        }
     }
 
     return "$type/$name";
@@ -90,26 +100,31 @@ sub get_conversations
 
 sub get_replies
 {
-    my ($self, $conversation_id, $thread_ts, $last_ts) = @_;
+    my ($self, $conversation_id, $thread_ts, $last_ts, $latest_ts,
+        $cursor) = @_;
 
     return $self->standard_get_request(
         '/conversations.replies',
         { channel => $conversation_id,
           ts      => $thread_ts,
           limit   => $LIMIT,
-          oldest  => $last_ts }
+          oldest  => $last_ts,
+          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
+          ($cursor    ? (cursor => $cursor) : ()) }
     );
 }
 
 sub get_history
 {
-    my ($self, $conversation_id, $last_ts) = @_;
+    my ($self, $conversation_id, $last_ts, $latest_ts, $cursor) = @_;
 
     return $self->standard_get_request(
         '/conversations.history',
         { channel => $conversation_id,
           limit   => $LIMIT,
-          oldest  => $last_ts }
+          oldest  => $last_ts,
+          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
+          ($cursor    ? (cursor => $cursor) : ()) }
     );
 }
 

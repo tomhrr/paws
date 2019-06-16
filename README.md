@@ -37,6 +37,10 @@ workspaces:
     conversations:
       - "im/slackbot"
       - "channel/general"
+    # The length of time (in seconds) prior to the timestamp of the
+    # last-retrieved message in which to check for edits to messages
+    # (defaults to 0).
+    modification_window: 3600
 # Receiver configuration.
 receivers:
     # The type of the receiver.  ('maildir' is the only available
@@ -74,6 +78,11 @@ new messages from Slack into the configured maildirs.
  - If replying to a message that is part of a Slack thread, then the
    reply will also be part of that Slack thread, except when the
    message being replied to is the first message in the thread.
+ - An edited message has the string '(edited)' appended to its subject
+   line, and is represented as being a reply to the original message.
+ - `modification_window` is necessary, because the Slack API does not
+   support a call like "get any edits that have happened since
+   {time}".
  - `paws-send` will only handle mail that is 'to' a single Slack
    address.  'cc' and other headers are ignored in this instance.  New
    Slack conversations are not created implicitly (this may change in

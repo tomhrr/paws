@@ -16,7 +16,7 @@ use List::Util qw(first);
 use MIME::Parser;
 use YAML;
 
-use Test::More tests => 10;
+use Test::More tests => 17;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -211,5 +211,50 @@ my $found =
                   '<im/slackbot@test.slack.alt>' }
         @aliases;
 ok($found, 'Found slackbot alias in alias list');
+
+my $ua = LWP::UserAgent->new();
+my $req = HTTP::Request->new();
+$req->method('POST');
+$req->uri($url.'/chat.update');
+$req->content(encode_json({ channel => 'C00000001',
+                            ts      => '2.1',
+                            text    => 'edited', }));
+my $res = $ua->request($req);
+ok($res->is_success(), 'Updated message successfully');
+
+$paws->receive(70);
+@files = `find $mail_dir -type f`;
+is(@files, 13, 'Edited message not retrieved (no modification window)');
+
+$config->{'workspaces'}->{'test'}->{'modification_window'} = 3600;
+print $config_path YAML::Dump($config);
+$config_path->flush();
+$paws = App::Paws->new();
+
+$paws->receive(80);
+@files = `find $mail_dir -type f`;
+is(@files, 14, 'Edited message retrieved');
+
+$paws->receive(90);
+@files = `find $mail_dir -type f`;
+is(@files, 14, 'Edited message not retrieved again');
+
+$req = HTTP::Request->new();
+$req->method('POST');
+$req->uri($url.'/chat.update');
+$req->content(encode_json({ channel   => 'C00000002',
+                            ts        => '6.1',
+                            thread_ts => '5.1',
+                            text      => 'edited', }));
+$res = $ua->request($req);
+ok($res->is_success(), 'Updated thread message successfully');
+
+$paws->receive(100);
+@files = `find $mail_dir -type f`;
+is(@files, 15, 'Edited message retrieved');
+
+$paws->receive(110);
+@files = `find $mail_dir -type f`;
+is(@files, 15, 'Edited message not retrieved again');
 
 1;
