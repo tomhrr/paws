@@ -250,7 +250,8 @@ sub _find_message
                ($b->[2]->{'edited_ts'} || 0) }
             @messages;
     my $latest_message = pop @messages;
-    return $latest_message;
+    my $earliest_message = (@messages ? shift @messages : $latest_message);
+    return ($earliest_message, $latest_message);
 }
 
 sub _receive_conversation
@@ -280,22 +281,35 @@ sub _receive_conversation
                                         ($stored_last_ts -
                                         $modification_window),
                                         $stored_last_ts);
+            my %seen_messages;
             while (@{$data->{'messages'}}) {
                 for my $message (@{$data->{'messages'}}) {
                     if ($message->{'edited'}) {
-                        my $message_data =
+                        my ($earliest_message,
+                            $latest_message) =
                             $self->_find_message($conversation,
                                                  $message->{'ts'});
-                        if (not $message_data) {
+                        if (not $latest_message) {
                             next;
                         }
-                        if (($message_data->[2]->{'edited_ts'} || 0)
+                        if (($latest_message->[2]->{'edited_ts'} || 0)
                                 eq $message->{'edited'}->{'ts'}) {
                             next;
                         }
+                        my $earliest_data = $earliest_message->[2];
+                        my $earliest_ts = $earliest_data->{'ts'};
+                        my $earliest_edited_ts =
+                            $earliest_data->{'edited_ts'};
                         my $parent_id =
-                            $self->_message_to_id($conversation,
-                                                  { ts => $message->{'ts'} });
+                            $self->_message_to_id(
+                                $conversation,
+                                { ts => $earliest_ts,
+                                    ($earliest_edited_ts
+                                        ? (edited => {
+                                            ts => $earliest_edited_ts
+                                          })
+                                        : ()) }
+                            );
                         $self->_write_message($conversation, $message,
                                               $first_ts, $first_ts,
                                               $$counter++,
@@ -364,20 +378,31 @@ sub _receive_conversation
                     while (@{$replies->{'messages'}}) {
                         for my $sub_message (@{$replies->{'messages'}}) {
                             if ($sub_message->{'edited'}) {
-                                my $message_data =
+                                my ($earliest_message,
+                                    $latest_message) =
                                     $self->_find_message($conversation,
-                                                        $sub_message->{'ts'});
-                                if (not $message_data) {
+                                                         $sub_message->{'ts'});
+                                if (not $latest_message) {
                                     next;
                                 }
-                                if (($message_data->[2]->{'edited_ts'} || 0)
+                                if (($latest_message->[2]->{'edited_ts'} || 0)
                                         eq $sub_message->{'edited'}->{'ts'}) {
                                     next;
                                 }
+                                my $earliest_data = $earliest_message->[2];
+                                my $earliest_ts = $earliest_data->{'ts'};
+                                my $earliest_edited_ts =
+                                    $earliest_data->{'edited_ts'};
                                 my $parent_id =
-                                    $self->_message_to_id($conversation,
-                                                        { ts => $sub_message->{'ts'} });
-                                my $first_ts = $db_conversation->{'first_msg_ts'};
+                                    $self->_message_to_id(
+                                        $conversation,
+                                        { ts => $earliest_ts,
+                                          ($earliest_edited_ts
+                                              ? (edited => {
+                                                    ts => $earliest_edited_ts
+                                                })
+                                              : ()) }
+                                    );
                                 $self->_write_message($conversation,
                                                     $sub_message,
                                                     $first_ts, $thread_ts,
