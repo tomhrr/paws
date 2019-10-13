@@ -540,6 +540,7 @@ sub _receive_conversation
     for my $thread_ts (@thread_tss) {
         my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
         my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'} || {};
+        my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'} || {};
         eval {
             my $replies = $ws->get_replies($conversation_id,
                                       $thread_ts, $last_ts);
