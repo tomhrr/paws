@@ -266,48 +266,36 @@ sub _find_message
 
 sub _write_delete_message
 {
-    my ($self, $conversation, $ts, $counter) = @_;
+    my ($self, $ws_name, $conversation, $ts, $counter) = @_;
 
-    my ($earliest_message,
-        $latest_message) =
-        $self->_find_message($conversation,
-                             $ts);
+    my $context = $self->{'context'};
 
-    my $previous_entity = $latest_message->[1];
-    my $head = $previous_entity->head();
-    my $subject = $head->get('Subject');
-    chomp $subject;
-    if ($subject =~ /\(deleted\)$/) {
-        return;
-    }
-    my $is_edit = ($subject =~ /\(edited\)$/);
-    $subject .= ' (deleted)';
-    $head->replace('Subject', $subject);
+    my $message_id = $self->_message_to_id($conversation, { ts => $ts });
+    my $del_message_id = $message_id;
+    $del_message_id =~ s/@/.deleted@/;
 
-    my $message_id = $head->get('Message-ID');
-    my $in_reply_to = $head->get('In-Reply-To');
-    chomp $message_id;
-    if ($in_reply_to) {
-        chomp $in_reply_to;
-    }
-    if (not $is_edit) {
-        my @references = ($message_id);
-        if ($in_reply_to) {
-            push @references, $in_reply_to;
-        }
-        $head->replace('References', (join ' ', @references));
+    my $domain_name = $context->domain_name();
+    my $ws_domain_name = "$ws_name.$domain_name";
 
-        $head->replace('In-Reply-To', $message_id);
-    }
-    $message_id =~ s/@/.deleted@/;
-    $head->replace('Message-ID', $message_id);
+    my $time = time();
+    my $entity = MIME::Entity->build(
+        Date          => _get_mail_date($time),
+        From          => "paws-admin\@$ws_domain_name",
+        To            => $context->user_email(),
+        Subject       => "Message from $conversation (deleted)",
+        'Message-ID'  => $del_message_id,
+        'In-Reply-To' => $message_id,
+        'References'  => $message_id,
+        Charset       => 'UTF-8',
+        Encoding      => 'base64',
+        Data          => 'Message deleted.',
+    );
 
     my $maildir = $self->_get_maildir($conversation);
-    my $new_ts = $latest_message->[2]->{'ts'};
-    my $fn = $new_ts.'.'.$$.'_'.$counter++.'.'.hostname();
+    my $fn = $time.'.'.$$.'_'.$counter++.'.'.hostname();
 
     write_file($maildir.'/tmp/'.$fn,
-               $previous_entity->as_string());
+               $entity->as_string());
     rename($maildir.'/tmp/'.$fn, $maildir.'/new/'.$fn);
 
     return 1;
@@ -403,7 +391,7 @@ sub _receive_conversation
                 }
                 $seen_messages{$ts} = 1;
                 $deletions->{$ts} = 1;
-                $self->_write_delete_message($conversation, $ts,
+                $self->_write_delete_message($ws_name, $conversation, $ts,
                                                 $$counter++);
             }
         };
@@ -523,7 +511,8 @@ sub _receive_conversation
                         }
                         $seen_messages{$ts} = 1;
                         $deletions->{$ts} = 1;
-                        $self->_write_delete_message($conversation, $ts,
+                        $self->_write_delete_message($ws_name,
+                                                     $conversation, $ts,
                                                      $$counter++);
                     }
                 };
