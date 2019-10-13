@@ -299,62 +299,6 @@ sub _find_message
     return ($earliest_message, $latest_message);
 }
 
-sub _get_messages
-{
-    my ($self, $conversation, $first_ts, $last_ts) = @_;
-
-    my $ffirst_ts = $first_ts;
-    my $flast_ts  = $last_ts;
-    for ($ffirst_ts, $flast_ts) {
-        s/\..*//;
-    }
-
-    my $maildir = $self->_get_maildir($conversation);
-    if (not $maildir) {
-        return;
-    }
-    my $min_length = min((length $ffirst_ts), (length $flast_ts));
-    my $longest_common =
-        substr($ffirst_ts, 0,
-                (first { substr($ffirst_ts, 0, $_) eq substr($flast_ts, 0, $_) }
-                    reverse(0..$min_length)));
-    my $command =
-        ($longest_common)
-            ? "-iname '$longest_common*'"
-            : "-type f";
-
-    my @message_paths =
-        grep { my $name = basename($_);
-               ($name ge $ffirst_ts) and ($name le $flast_ts) }
-        map { chomp; $_ }
-            `find $maildir $command`;
-    if (not @message_paths) {
-        return;
-    }
-
-    my $parser = $self->_get_parser();
-    my @messages;
-    for my $message_path (@message_paths) {
-        my $entity = $parser->parse_open($message_path);
-        my $id = $entity->head()->get('Message-ID');
-        chomp $id;
-        my $data = $self->_parse_message_id($id);
-        if ($data->{'conversation'} ne $conversation) {
-            next;
-        }
-        if ($data->{'ts'} lt $first_ts or $data->{'ts'} gt $last_ts) {
-            next;
-        }
-        push @messages, [$message_path, $entity, $data];
-    }
-    @messages =
-        sort { ($a->[2]->{'ts'} || 0) <=>
-               ($b->[2]->{'ts'} || 0) }
-            @messages;
-
-    return @messages;
-}
-
 sub _write_delete_message
 {
     my ($self, $conversation, $ts, $counter) = @_;
@@ -430,6 +374,7 @@ sub _receive_conversation
 
     my $modification_window = $ws->modification_window();
     my $first_ts = $db_conversation->{'first_msg_ts'};
+    my $deliveries = $db_conversation->{'deliveries'} || {};
     if ($modification_window and $first_ts) {
         eval {
             my $data = $ws->get_history($conversation_id,
@@ -470,6 +415,7 @@ sub _receive_conversation
                                               $first_ts, $first_ts,
                                               $$counter++,
                                               $parent_id);
+                        $deliveries->{$message->{'ts'}} = 1;
                     }
                 }
                 if ($data->{'response_metadata'}->{'next_cursor'}) {
@@ -483,19 +429,17 @@ sub _receive_conversation
                     last;
                 }
             }
-            my @local_messages =
-                $self->_get_messages($conversation,
-                                     ($stored_last_ts -
-                                      $modification_window),
-                                     $stored_last_ts);
-            for my $message (@local_messages) {
-                if ($seen_messages{$message->[2]->{'ts'}}) {
+            my @deliveries_list =
+                grep { $_ ge ($stored_last_ts - $modification_window)
+                        and $_ le $stored_last_ts }
+                    keys %{$deliveries};
+            for my $ts (@deliveries_list) {
+                if ($seen_messages{$ts}) {
                     next;
                 }
-                $seen_messages{$message->[2]->{'ts'}} = 1;
-                $self->_write_delete_message($conversation,
-                                             $message->[2]->{'ts'},
-                                             $$counter++);
+                $seen_messages{$ts} = 1;
+                $self->_write_delete_message($conversation, $ts,
+                                                $$counter++);
             }
         };
         if (my $error = $@) {
@@ -512,6 +456,7 @@ sub _receive_conversation
             for my $message (@{$data->{'messages'}}) {
                 $self->_write_message($conversation, $message,
                               $first_ts, $first_ts, $$counter++);
+                $deliveries->{$message->{'ts'}} = 1;
                 if ($message->{'ts'} >= $new_last_ts) {
                     $new_last_ts = $message->{'ts'};
                 }
@@ -531,6 +476,7 @@ sub _receive_conversation
     }
 
     $db_conversation->{'last_ts'} = $new_last_ts;
+    $db_conversation->{'deliveries'} = $deliveries;
     @thread_tss = uniq @thread_tss;
     $db_conversation->{'thread_tss'} = \@thread_tss;
     my $db_thread_ts = $db_conversation->{'thread_ts'} || {};
