@@ -317,6 +317,30 @@ sub _handle_request
             } else {
                 $res->code(404);
             }
+        } elsif ($path eq '/chat.delete') {
+            my $data = decode_json($r->content());
+            my $channel_id = $data->{'channel'};
+            my $text = $data->{'text'};
+            my $thread_ts = $data->{'thread_ts'};
+            my $ref =
+                ($thread_ts)
+                    ? $thread_to_history{$channel_id}->{$thread_ts}
+                    : $channel_id_to_history{$channel_id};
+            my $ts = $data->{'ts'};
+            my $found = 0;
+            for (my $i = 0; $i < @{$ref}; $i++) {
+                my $message = $ref->[$i];
+                if ($message->{'ts'} eq $ts) {
+                    $found = 1;
+                    splice(@{$ref}, $i, 1);
+                    last;
+                }
+            }
+            if ($found) {
+                $res->code(200);
+            } else {
+                $res->code(404);
+            }
         } elsif ($path eq '/files.upload') {
             my $content = $r->content();
             my ($separator) = ($content =~ /^(.*?\r\n)/);

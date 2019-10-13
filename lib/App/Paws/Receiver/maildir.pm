@@ -226,6 +226,41 @@ sub _get_parser
     return $parser;
 }
 
+sub _is_deleted_message
+{
+    my ($self, $conversation, $ts) = @_;
+
+    my $maildir = $self->_get_maildir($conversation);
+    if (not $maildir) {
+        return;
+    }
+    my $path_ts = $ts;
+    $path_ts =~ s/\..*//;
+    my @message_paths = map { chomp; $_ } `find $maildir -iname '$path_ts.*'`;
+    if (not @message_paths) {
+        return;
+    }
+    my $parser = $self->_get_parser();
+    my @messages;
+    for my $message_path (@message_paths) {
+        my $entity = $parser->parse_open($message_path);
+        my $id = $entity->head()->get('Message-ID');
+        chomp $id;
+        my $data = $self->_parse_message_id($id);
+        if ($data->{'conversation'} ne $conversation) {
+            next;
+        }
+        if ($data->{'ts'} ne $ts) {
+            next;
+        }
+        push @messages, [$message_path, $entity, $data];
+    }
+    my $deleted =
+        first { $_->[1]->head()->get('Subject') =~ /\(deleted\)/ }
+            @messages;
+    return ($deleted ? 1 : 0);
+}
+
 sub _find_message
 {
     my ($self, $conversation, $ts) = @_;
@@ -322,12 +357,17 @@ sub _get_messages
 
 sub _write_delete_message
 {
-    my ($self, $conversation, $message, $counter) = @_;
+    my ($self, $conversation, $ts, $counter) = @_;
+
+    if ($self->_is_deleted_message(
+        $conversation, $ts)) {
+        return;
+    }
 
     my ($earliest_message,
         $latest_message) =
         $self->_find_message($conversation,
-                             $message->[2]->{'ts'});
+                             $ts);
 
     my $previous_entity = $latest_message->[1];
     my $head = $previous_entity->head();
@@ -359,8 +399,8 @@ sub _write_delete_message
     $head->replace('Message-ID', $message_id);
 
     my $maildir = $self->_get_maildir($conversation);
-    my $ts = $latest_message->[2]->{'ts'};
-    my $fn = $ts.'.'.$$.'_'.$counter++.'.'.hostname();
+    my $new_ts = $latest_message->[2]->{'ts'};
+    my $fn = $new_ts.'.'.$$.'_'.$counter++.'.'.hostname();
 
     write_file($maildir.'/tmp/'.$fn,
                $previous_entity->as_string());
@@ -453,7 +493,8 @@ sub _receive_conversation
                     next;
                 }
                 $seen_messages{$message->[2]->{'ts'}} = 1;
-                $self->_write_delete_message($conversation, $message,
+                $self->_write_delete_message($conversation,
+                                             $message->[2]->{'ts'},
                                              $$counter++);
             }
         };
@@ -498,6 +539,7 @@ sub _receive_conversation
         eval {
             for my $thread_ts (@thread_tss) {
                 my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+                my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'};
                 eval {
                     my $replies = $ws->get_replies($conversation_id,
                                             $thread_ts,
@@ -539,6 +581,7 @@ sub _receive_conversation
                                                     $first_ts, $thread_ts,
                                                     $$counter++,
                                                     $parent_id);
+                                $deliveries->{$sub_message->{'ts'}} = 1;
                             }
                         }
                         if ($replies->{'response_metadata'}
@@ -554,21 +597,17 @@ sub _receive_conversation
                             last;
                         }
                     }
-                    my @local_messages =
-                        grep {
-                            $_->[1]->head()->get('X-Paws-Thread-TS') eq
-                                $thread_ts }
-                        $self->_get_messages($conversation,
-                                            ($last_ts -
-                                            $modification_window),
-                                            $last_ts);
-                    for my $message (@local_messages) {
-                        if ($seen_messages{$message->[2]->{'ts'}}) {
+                    my @deliveries_list =
+                        grep { $_ ge ($last_ts - $modification_window)
+                                and $_ le $last_ts }
+                            keys %{$deliveries};
+                    for my $ts (@deliveries_list) {
+                        if ($seen_messages{$ts}) {
                             next;
                         }
-                        $seen_messages{$message->[2]->{'ts'}} = 1;
-                        $self->_write_delete_message($conversation, $message,
-                                                    $$counter++);
+                        $seen_messages{$ts} = 1;
+                        $self->_write_delete_message($conversation, $ts,
+                                                     $$counter++);
                     }
                 };
                 if (my $error = $@) {
@@ -583,6 +622,7 @@ sub _receive_conversation
 
     for my $thread_ts (@thread_tss) {
         my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+        my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'} || {};
         eval {
             my $replies = $ws->get_replies($conversation_id,
                                       $thread_ts, $last_ts);
@@ -595,6 +635,7 @@ sub _receive_conversation
                     $self->_write_message($conversation, $sub_message,
                                           $first_ts, $thread_ts,
                                           $$counter++);
+                    $deliveries->{$sub_message->{'ts'}} = 1;
                     if ($sub_message->{'ts'} >= $last_ts) {
                         $last_ts = $sub_message->{'ts'};
                     }
@@ -611,6 +652,7 @@ sub _receive_conversation
             warn $error;
         }
         $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
+        $db_thread_ts->{$thread_ts}->{'deliveries'} = $deliveries;
     }
 
     $db_conversation->{'thread_ts'} = $db_thread_ts;
