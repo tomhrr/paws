@@ -226,41 +226,6 @@ sub _get_parser
     return $parser;
 }
 
-sub _is_deleted_message
-{
-    my ($self, $conversation, $ts) = @_;
-
-    my $maildir = $self->_get_maildir($conversation);
-    if (not $maildir) {
-        return;
-    }
-    my $path_ts = $ts;
-    $path_ts =~ s/\..*//;
-    my @message_paths = map { chomp; $_ } `find $maildir -iname '$path_ts.*'`;
-    if (not @message_paths) {
-        return;
-    }
-    my $parser = $self->_get_parser();
-    my @messages;
-    for my $message_path (@message_paths) {
-        my $entity = $parser->parse_open($message_path);
-        my $id = $entity->head()->get('Message-ID');
-        chomp $id;
-        my $data = $self->_parse_message_id($id);
-        if ($data->{'conversation'} ne $conversation) {
-            next;
-        }
-        if ($data->{'ts'} ne $ts) {
-            next;
-        }
-        push @messages, [$message_path, $entity, $data];
-    }
-    my $deleted =
-        first { $_->[1]->head()->get('Subject') =~ /\(deleted\)/ }
-            @messages;
-    return ($deleted ? 1 : 0);
-}
-
 sub _find_message
 {
     my ($self, $conversation, $ts) = @_;
@@ -302,11 +267,6 @@ sub _find_message
 sub _write_delete_message
 {
     my ($self, $conversation, $ts, $counter) = @_;
-
-    if ($self->_is_deleted_message(
-        $conversation, $ts)) {
-        return;
-    }
 
     my ($earliest_message,
         $latest_message) =
@@ -375,6 +335,7 @@ sub _receive_conversation
     my $modification_window = $ws->modification_window();
     my $first_ts = $db_conversation->{'first_msg_ts'};
     my $deliveries = $db_conversation->{'deliveries'} || {};
+    my $deletions = $db_conversation->{'deletions'} || {};
     if ($modification_window and $first_ts) {
         eval {
             my $data = $ws->get_history($conversation_id,
@@ -434,10 +395,14 @@ sub _receive_conversation
                         and $_ le $stored_last_ts }
                     keys %{$deliveries};
             for my $ts (@deliveries_list) {
+                if ($deletions->{$ts}) {
+                    next;
+                }
                 if ($seen_messages{$ts}) {
                     next;
                 }
                 $seen_messages{$ts} = 1;
+                $deletions->{$ts} = 1;
                 $self->_write_delete_message($conversation, $ts,
                                                 $$counter++);
             }
@@ -477,6 +442,7 @@ sub _receive_conversation
 
     $db_conversation->{'last_ts'} = $new_last_ts;
     $db_conversation->{'deliveries'} = $deliveries;
+    $db_conversation->{'deletions'} = $deletions;
     @thread_tss = uniq @thread_tss;
     $db_conversation->{'thread_tss'} = \@thread_tss;
     my $db_thread_ts = $db_conversation->{'thread_ts'} || {};
@@ -486,6 +452,7 @@ sub _receive_conversation
             for my $thread_ts (@thread_tss) {
                 my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
                 my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'};
+                my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'};
                 eval {
                     my $replies = $ws->get_replies($conversation_id,
                                             $thread_ts,
@@ -551,7 +518,11 @@ sub _receive_conversation
                         if ($seen_messages{$ts}) {
                             next;
                         }
+                        if ($deletions->{$ts}) {
+                            next;
+                        }
                         $seen_messages{$ts} = 1;
+                        $deletions->{$ts} = 1;
                         $self->_write_delete_message($conversation, $ts,
                                                      $$counter++);
                     }
@@ -599,6 +570,7 @@ sub _receive_conversation
         }
         $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
         $db_thread_ts->{$thread_ts}->{'deliveries'} = $deliveries;
+        $db_thread_ts->{$thread_ts}->{'deletions'} = $deletions;
     }
 
     $db_conversation->{'thread_ts'} = $db_thread_ts;
