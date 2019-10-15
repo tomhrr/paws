@@ -31,6 +31,7 @@ my $output = WriteMakefile(
         'MIME::Entity'   => 0,
         'MIME::Parser'   => 0,
         'YAML'           => 0,
+        'IPC::Run3'      => 0,
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'App-Paws-*' },
