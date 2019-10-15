@@ -6,6 +6,7 @@ use strict;
 use App::Paws::Context;
 use App::Paws::Sender;
 use App::Paws::Receiver::maildir;
+use App::Paws::Receiver::MDA;
 
 use Cwd;
 use File::Slurp qw(read_file write_file);

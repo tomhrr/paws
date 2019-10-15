@@ -1,4 +1,4 @@
-package App::Paws::Receiver::maildir;
+package App::Paws::Receiver::MDA;
 
 use warnings;
 use strict;
@@ -15,6 +15,7 @@ use MIME::Entity;
 use POSIX qw(strftime);
 use Sys::Hostname;
 use App::Paws::Receiver;
+use IPC::Run3;
 
 sub new
 {
@@ -37,6 +38,9 @@ sub run
     my $context = $self->{'context'};
     my $name = $self->{'name'};
 
+    my $ft = File::Temp->new();
+    my $fn = $ft->filename();
+
     my $receiver = App::Paws::Receiver->new(
         workspace => $self->{'workspace'},
         context   => $self->{'context'},
@@ -44,16 +48,22 @@ sub run
         write_callback => sub {
             my ($entity) = @_;
 
-            my $maildir = $self->{'path'};
-            my $ts = $entity->head()->get('Message-ID');
-            $ts =~ s/^<//;
-            $ts =~ s/\..*//;
-            chomp $ts;
-
-            my $fn = $ts.'.'.$$.'_'.$counter++.'.'.hostname();
-
-            write_file($maildir.'/tmp/'.$fn, $entity->as_string());
-            rename($maildir.'/tmp/'.$fn, $maildir.'/new/'.$fn);
+            my $cmd = $self->{'path'};
+            my $data = $entity->as_string();
+            my $stderr;
+            eval { run3($cmd, \$data, \undef, \$stderr); };
+            if (my $error = $@) {
+                $stderr ||= "(no stderr output)"; 
+                die "MDA execution failed: $stderr";
+            }
+            my $res = $?;
+            if ($? != 0) {
+                $stderr ||= "(no stderr output)"; 
+                die "MDA execution failed: $stderr";
+            }
+            if ($stderr) {
+                die "MDA execution failed: $stderr";
+            }
         }
     );
 

@@ -2,7 +2,7 @@
 
 Send/receive Slack messages via email.  Supports sending messages to
 Slack via a sendmail-like command, and receiving messages from Slack
-into maildirs.
+into maildirs, or for further processing by an MDA.
 
 ### Install
 
@@ -43,16 +43,16 @@ workspaces:
     modification_window: 3600
 # Receiver configuration.
 receivers:
-    # The type of the receiver.  ('maildir' is the only available
-    # receiver type.
+    # The type of the receiver.
   - type: "maildir"
     # The workspace for the receiver.
     workspace: "apnicops"
-    # Receiver-specific configuration.  For 'maildir', this is a
-    # map from conversation name to maildir path.  A '*' can be
-    # used to map all conversations to a single maildir path.
-    conversation_to_maildir:
-      "*": "/home/tomh/maildir/slack"
+    # The name of the receiver.  This must be unique for each receiver
+    # entry in the configuration file.
+    name: "default"
+    # Type-specific configuration.  For 'maildir', the only extra
+    # configuration is the path to the maildir.
+    path: "/home/mail/slack"
 # Sender configuration.
 sender:
   # The sendmail command to be used for mail that isn't to be sent
@@ -67,6 +67,21 @@ Then, configure your MUA to use `paws-send` as its sendmail command
 for sending mail (mail that is not for Slack will be passed off to the
 `fallback_sendmail` command).  After that, run `paws-receive` to pull
 new messages from Slack into the configured maildirs.
+
+### Receivers
+
+#### maildir
+
+Type-specific configuration:
+
+ - `path`: the path to the maildir where the messages should be
+   written.
+
+#### MDA
+
+Type-specific configuration:
+
+ - `path`: the path to the MDA executable.
 
 ### Notes
 

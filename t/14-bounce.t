@@ -51,9 +51,7 @@ my $config = {
         type      => 'maildir',
         name      => 'initial',
         workspace => 'test',
-        conversation_to_maildir => {
-            "*" => $mail_dir,
-        } 
+        path      => $mail_dir,
     } ],
 };
 

@@ -16,7 +16,7 @@ use List::Util qw(first);
 use MIME::Parser;
 use YAML;
 
-use Test::More tests => 4;
+use Test::More tests => 2;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -28,6 +28,21 @@ for my $dir (qw(cur new tmp)) {
     system("mkdir $mail_dir/$dir");
     system("mkdir $bounce_dir/$dir");
 }
+
+my $ft = File::Temp->new();
+print $ft <<EOF;
+MAILDIR=$mail_dir
+LOGFILE=/tmp/asdf
+VERBOSE=1
+
+:0:
+$mail_dir/
+EOF
+$ft->flush();
+my $procmail_config_fn = $ft->filename();
+
+my ($procmail) = `which procmail`;
+chomp $procmail;
 
 my $config = {
     domain_name => 'slack.alt',
@@ -48,10 +63,10 @@ my $config = {
         fallback_sendmail => '/bin/true',
     },
     receivers => [ {
-        type      => 'maildir',
+        type      => 'MDA',
         name      => 'initial',
         workspace => 'test',
-        path      => $mail_dir,
+        path      => "$procmail $procmail_config_fn",
     } ],
 };
 
@@ -73,28 +88,8 @@ $paws->receive(1);
 my @files = `find $mail_dir -type f`;
 is(@files, 11, 'Got 11 mails');
 
-my $ua = LWP::UserAgent->new();
-my $req = HTTP::Request->new();
-$req->method('POST');
-$req->uri($url.'/chat.update');
-$req->content(encode_json({ channel   => 'C00000002',
-                            ts        => '6.1',
-                            thread_ts => '5.1',
-                            text      => 'edited', }));
-my $res = $ua->request($req);
-ok($res->is_success(), 'Updated thread message successfully');
-
-$config->{'workspaces'}->{'test'}->{'modification_window'} = 3600;
-print $config_path YAML::Dump($config);
-$config_path->flush();
-$paws = App::Paws->new();
-
-$paws->receive(100);
+$paws->receive(10);
 @files = `find $mail_dir -type f`;
-is(@files, 12, 'Edited message retrieved');
-
-$paws->receive(110);
-@files = `find $mail_dir -type f`;
-is(@files, 12, 'Edited message not retrieved again');
+is(@files, 11, 'Still have 11 mails');
 
 1;
