@@ -18,6 +18,8 @@ use POSIX qw(strftime);
 use Sys::Hostname;
 use URI;
 
+my $MAX_FAILURE_COUNT = 5;
+
 sub new
 {
     my $class = shift;
@@ -34,10 +36,11 @@ sub _get_mail_date
 
 sub _write_bounce
 {
-    my ($self, $local, $message_id) = @_;
+    my ($self, $message_id, $error_message) = @_;
 
     my $bounce_dir = $self->{'bounce_dir'};
     my $context = $self->{'context'};
+    $error_message ||= 'no additional error detail provided';
 
     my $fn = time().'.'.$$.'.'.int(rand(1000000));
     my $date = _get_mail_date(time());
@@ -50,7 +53,7 @@ To: $to
 Subject: Bounce message
 Content-Type: text/plain
 
-Unable to find conversation ID for '$local' (message ID: $message_id).
+Unable to deliver message (message ID '$message_id'): $error_message
 EOF
     rename($bounce_dir.'/tmp/'.$fn, $bounce_dir.'/new/'.$fn);
 
@@ -91,17 +94,10 @@ sub _unlock_queue
 
 sub _send_queued_single
 {
-    my ($self, $path) = @_;
+    my ($self, $entity) = @_;
 
     my $context = $self->{'context'};
     my $ua = $context->ua();
-
-    open my $fh, '<', $path or die $!;
-
-    my $parser = MIME::Parser->new();
-    my $parser_dir = tempdir();
-    $parser->output_under($parser_dir);
-    my $entity = $parser->parse($fh);
 
     my $to = $entity->head()->decode()->get('To');
     if ($to =~ /</) {
@@ -116,6 +112,7 @@ sub _send_queued_single
         ($thread_ts) = ($name =~ /.*\+(.*)/);
         $name =~ s/\+.*//;
     }
+    my $message_id = $entity->head()->decode()->get('Message-ID');
 
     my $ws = $context->{'workspaces'}->{$ws_name};
     my $token = $ws->{'token'};
@@ -129,9 +126,9 @@ sub _send_queued_single
 
     if (not $conversation_id) {
         my $message_id = $entity->head()->decode()->get('Message-ID');
-        $self->_write_bounce($local, $message_id);
-        unlink $path;
-        close $fh;
+        $self->_write_bounce($message_id,
+                             "unable to find conversation ID for ".
+                             "'$local'");
         return 1;
     }
 
@@ -181,15 +178,32 @@ sub _send_queued_single
     $req->uri($context->slack_base_url().'/chat.postMessage');
     $req->method('POST');
     $req->content(encode_json(\%post_data));
-    for my $r ($req, @sreqs) {
-        my $res = $ua->request($r);
-        if (not $res->is_success()) {
-            die Dumper($res);
+
+    my $res = $ua->request($req);
+    if (not $res->is_success()) {
+        my $client_warning =
+            $res->headers()->header('Client-Warning');
+        if ($client_warning eq 'Internal response') {
+            warn "Unable to send message, will retry later: ".
+                 $res->status_line();
+            return;
+        } else {
+            $self->_write_bounce($message_id,
+                                 $res->status_line());
+            return 1;
         }
     }
 
-    unlink $path;
-    close $fh;
+    for my $r (@sreqs) {
+        my $res = $ua->request($r);
+        if (not $res->is_success()) {
+            warn "Unable to send attachment, bouncing: ".
+                 $res->status_line();
+            $self->_write_bounce($message_id,
+                                 $res->status_line());
+            return 1;
+        }
+    }
 
     return 1;
 }
@@ -230,6 +244,12 @@ sub send_queued
     $self->_lock_queue();
     my $queue_dir = $context->queue_directory();
 
+    my $path = $context->db_directory().'/sender';
+    if (not -e $path) {
+        write_file($path, '{}');
+    }
+    my $db = decode_json(read_file($path));
+
     eval {
         my $dh;
         opendir $dh, $queue_dir or die $!;
@@ -239,15 +259,41 @@ sub send_queued
             }
             $entry = $queue_dir.'/'.$entry;
             if (-f $entry) {
-                $self->_send_queued_single($entry);
+                my $parser = MIME::Parser->new();
+                my $parser_dir = tempdir();
+                $parser->output_under($parser_dir);
+                open my $fh, '<', $entry or die $!;
+                my $entity = $parser->parse($fh);
+                close $fh;
+
+                my $res = $self->_send_queued_single($entity);
+                if (not $res) {
+                    my $message_id =
+                        $entity->head()->decode->get('Message-ID');
+                    $db->{'failures'}->{$message_id}++;
+                    if ($db->{'failures'}->{$message_id} >= $MAX_FAILURE_COUNT) {
+                        $self->_write_bounce(
+                            $message_id,
+                            'failed to deliver message '.
+                            $db->{'failures'}->{$path}.' times, '.
+                            'giving up'
+                        );
+                        unlink $entry;
+                    }
+                } else {
+                    unlink $entry;
+                }
             }
         }
     };
+
     my $error = $@;
     $self->_unlock_queue();
     if ($error) {
         die $error;
     }
+
+    write_file($path, encode_json($db));
 }
 
 1;
