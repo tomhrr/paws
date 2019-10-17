@@ -3,6 +3,7 @@ package App::Paws::Workspace;
 use warnings;
 use strict;
 
+use Data::Dumper;
 use HTTP::Request;
 use JSON::XS qw(decode_json);
 use LWP::UserAgent;

@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Encode;
+use Fcntl qw(O_CREAT O_EXCL);
 use File::Basename qw(basename);
 use File::Slurp qw(read_file write_file);
 use File::Temp qw(tempdir);
@@ -22,6 +23,38 @@ sub new
     my $self = \%args;
     bless $self, $class;
     return $self;
+}
+
+sub _lock
+{
+    my ($self) = @_;
+
+    my $db_dir = $self->{'context'}->db_directory();
+    my $lock = $db_dir.'/lock';
+    my $fh;
+    my $count = 10;
+    for (;;) {
+        my $res = sysopen $fh, $lock, O_CREAT | O_EXCL;
+        if ($fh) {
+            last;
+        }
+        $count--;
+        sleep(1);
+    }
+    if (not $fh) {
+        die "Unable to secure lock $lock after 10 seconds.";
+    }
+
+    return 1;
+}
+
+sub _unlock
+{
+    my ($self) = @_;
+
+    my $db_dir = $self->{'context'}->db_directory();
+    my $lock = $db_dir.'/lock';
+    unlink $lock;
 }
 
 sub _get_mail_date
@@ -459,12 +492,11 @@ sub _receive_conversation
     return 1;
 }
 
-sub run
+sub _run_internal
 {
     my ($self) = @_;
 
     my $ws = $self->{'workspace'};
-
     my $context = $self->{'context'};
     my $ua = $context->ua();
     my $domain_name = $context->domain_name();
@@ -499,6 +531,20 @@ sub run
                                      $conversation);
     }
     write_file($path, encode_json($db));
+}
+
+sub run
+{
+    my ($self) = @_;
+
+    $self->_lock();
+    eval { $self->_run_internal(); };
+    my $error = $@;
+    $self->_unlock();
+    if ($error) {
+        die $error;
+    }
+    return 1;
 }
 
 1;
