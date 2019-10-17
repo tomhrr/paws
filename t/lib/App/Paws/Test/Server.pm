@@ -277,19 +277,27 @@ sub _handle_request
             my $data = decode_json($r->content());
             my $channel_id = $data->{'channel'};
             my $text = $data->{'text'};
-            my $thread_ts = $data->{'thread_ts'};
-            my $ref =
-                ($thread_ts)
-                    ? $thread_to_history{$channel_id}->{$thread_ts}
-                    : $channel_id_to_history{$channel_id};
-            push @{$ref},
-                { 
-                    ts => time().'.'.sprintf("%06d", $counter++),
-                    text => $text,
-                    user => 'U00000001',
-                    type => 'message'
-                };
-            $res->code(200);
+            if ($text =~ /Internal response/) {
+                $res->headers()->header('Client-Warning',
+                                        'Internal response');
+                $res->code(500);
+            } elsif ($text =~ /Status: (\d\d\d)/) {
+                $res->code($1);
+            } else {
+                my $thread_ts = $data->{'thread_ts'};
+                my $ref =
+                    ($thread_ts)
+                        ? $thread_to_history{$channel_id}->{$thread_ts}
+                        : $channel_id_to_history{$channel_id};
+                push @{$ref},
+                    { 
+                        ts => time().'.'.sprintf("%06d", $counter++),
+                        text => $text,
+                        user => 'U00000001',
+                        type => 'message'
+                    };
+                $res->code(200);
+            }
         } elsif ($path eq '/chat.update') {
             my $data = decode_json($r->content());
             my $channel_id = $data->{'channel'};
@@ -354,15 +362,19 @@ sub _handle_request
                 $content =~ s/\r?\n$//;
                 $data{$name} = $content;
             }
-            my $channel_id = $data{'channels'};
-            my $ref = $channel_id_to_history{$channel_id};
-            $ref->[$#{$ref}]->{'files'} ||= [];
-            push @{$ref->[$#{$ref}]->{'files'}},
-                { url_private => '/file/'.$data{'filename'},
-                  mimetype => 'text/plain' };
-            $files{$data{'filename'}} = $data{'file'};
+            if ($data{'file'} =~ /Status: (\d\d\d)/) {
+                $res->code($1);
+            } else {
+                my $channel_id = $data{'channels'};
+                my $ref = $channel_id_to_history{$channel_id};
+                $ref->[$#{$ref}]->{'files'} ||= [];
+                push @{$ref->[$#{$ref}]->{'files'}},
+                    { url_private => '/file/'.$data{'filename'},
+                    mimetype => 'text/plain' };
+                $files{$data{'filename'}} = $data{'file'};
 
-            $res->code(200);
+                $res->code(200);
+            }
         }
     }
 
