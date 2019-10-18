@@ -526,7 +526,17 @@ sub _run_internal
                                     : $_ }
             @{$ws->{'conversations'}};
 
-    for my $conversation (@actual_conversations) {
+    my $ws_name = $self->{'workspace'}->name();
+    my %conversation_to_last_ts =
+        map { $_ => $db->{$ws_name}->{$_}->{'last_ts'} || 1 }
+            @actual_conversations;
+
+    my @sorted_conversations =
+        sort { $conversation_to_last_ts{$b} <=>
+               $conversation_to_last_ts{$a} }
+            @actual_conversations;
+
+    for my $conversation (@sorted_conversations) {
         $self->_receive_conversation($db, \%conversation_map,
                                      $conversation);
     }
