@@ -66,7 +66,8 @@ my $config = {
         type      => 'MDA',
         name      => 'initial',
         workspace => 'test',
-        path      => "$procmail $procmail_config_fn",
+        path      => $procmail,
+        args      => [$procmail_config_fn],
     } ],
 };
 

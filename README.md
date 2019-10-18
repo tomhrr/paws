@@ -82,6 +82,7 @@ Type-specific configuration:
 Type-specific configuration:
 
  - `path`: the path to the MDA executable.
+ - `args`: a list of arguments to be passed to the MDA executable.
 
 ### Notes
 

@@ -49,9 +49,10 @@ sub run
             my ($entity) = @_;
 
             my $cmd = $self->{'path'};
+            my @args = @{$self->{'args'} || []};
             my $data = $entity->as_string();
             my $stderr;
-            eval { run3($cmd, \$data, \undef, \$stderr); };
+            eval { run3([$cmd, @args], \$data, \undef, \$stderr); };
             if (my $error = $@) {
                 $stderr ||= "(no stderr output)"; 
                 die "MDA execution failed: $stderr";
