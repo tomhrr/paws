@@ -184,4 +184,6 @@ is(@files, 12, 'Sent one message successfully');
 @bounces = `find $bounce_dir -type f`;
 is(@bounces, 3, 'But got a bounce for the problematic attachment');
 
+$server->shutdown();
+
 1;

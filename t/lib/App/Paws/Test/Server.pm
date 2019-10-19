@@ -406,10 +406,14 @@ sub run
     }
 }
 
-sub DESTROY
+sub shutdown
 {
     my ($self) = @_;
-    kill 'TERM', $pid;
+
+    my $pid = $self->{'pid'};
+    if ($pid) {
+        kill 'TERM', $pid;
+    }
 }
 
 1;

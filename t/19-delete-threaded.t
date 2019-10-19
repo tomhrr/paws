@@ -100,4 +100,6 @@ $paws->receive(100);
 @files = `find $mail_dir -type f`;
 is(@files, 12, 'Deletion message not added again');
 
+$server->shutdown();
+
 1;

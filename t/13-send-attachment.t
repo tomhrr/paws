@@ -122,4 +122,6 @@ is(@parts, 2, 'Mail has two parts');
 is($parts[1]->head()->recommended_filename(), 'file',
     'Attachment has correct filename');
 
+$server->shutdown();
+
 1;

@@ -33,6 +33,8 @@ my $output = WriteMakefile(
         'YAML'                => 0,
         'IPC::Run3'           => 0,
         'IO::Capture::Stderr' => 0,
+        'IPC::Shareable'      => 0,
+        'Digest::MD5'         => 0,
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'App-Paws-*' },

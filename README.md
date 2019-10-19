@@ -25,6 +25,8 @@ structure is like so:
 domain_name: "slack.alt"
 # The addressee for email received from Slack.
 user_email: "user@example.org"
+# The number of processes to use to receive messages from Slack.
+processes: 2
 # Per-workspace configuration.
 workspaces:
   # The workspace name.

@@ -97,4 +97,6 @@ $paws->receive(20);
 @files = `find $mail_dir -type f`;
 is(@files, 12, 'Received mail previously sent');
 
+$server->shutdown();
+
 1;

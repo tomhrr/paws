@@ -3,6 +3,7 @@ package App::Paws::Receiver;
 use warnings;
 use strict;
 
+use Digest::MD5 qw(md5_hex);
 use Encode;
 use Fcntl qw(O_CREAT O_EXCL);
 use File::Basename qw(basename);
@@ -10,6 +11,7 @@ use File::Slurp qw(read_file write_file);
 use File::Temp qw(tempdir);
 use HTML::Entities qw(decode_entities);
 use HTTP::Request;
+use IPC::Shareable qw(:lock);
 use JSON::XS qw(decode_json encode_json);
 use List::Util qw(uniq min minstr first);
 use MIME::Entity;
@@ -257,20 +259,19 @@ sub _write_delete_message
 
 sub _receive_conversation
 {
-    my ($self, $db, $conversation_map, $conversation) = @_;
+    my ($self, $db_conversation, $conversation_map, $conversation) = @_;
 
     my $context = $self->{'context'};
     my $ws = $self->{'workspace'};
     my $ws_name = $ws->name();
     my $token = $ws->token();
 
-    my $db_conversation = $db->{$ws_name}->{$conversation} || {};
     my @thread_tss = @{$db_conversation->{'thread_tss'} || []};
     my $stored_last_ts = $db_conversation->{'last_ts'} || 1;
     my $new_last_ts = $stored_last_ts;
     my $conversation_id = $conversation_map->{$conversation};
     if (not $conversation_id) {
-        warn "Unable to find conversation '$conversation'";
+        warn "Unable to find conversation";
         return;
     }
 
@@ -487,7 +488,6 @@ sub _receive_conversation
     }
 
     $db_conversation->{'thread_ts'} = $db_thread_ts;
-    $db->{$ws_name}->{$conversation} = $db_conversation;
 
     return 1;
 }
@@ -531,15 +531,66 @@ sub _run_internal
         map { $_ => $db->{$ws_name}->{$_}->{'last_ts'} || 1 }
             @actual_conversations;
 
-    my @sorted_conversations =
+    my @sorted_conversations;
+    my $res = tie @sorted_conversations, 'IPC::Shareable', 'pws1',
+                  { create => 1 };
+    if (not $res) {
+        die "Unable to tie sorted conversations";
+    }
+    my $finished_dir = tempdir();
+
+    @sorted_conversations =
         sort { $conversation_to_last_ts{$b} <=>
                $conversation_to_last_ts{$a} }
             @actual_conversations;
 
-    for my $conversation (@sorted_conversations) {
-        $self->_receive_conversation($db, \%conversation_map,
-                                     $conversation);
+    my $processes = $context->{'config'}->{'processes'} || 1;
+    my @pids;
+    for (my $i = 0; $i < $processes; $i++) {
+        if (my $pid = fork()) {
+            push @pids, $pid;
+        } else {
+            my @sorted_conversations;
+            my $res = tie @sorted_conversations, 'IPC::Shareable', 'pws1',
+                          { create => 0, exclusive => 0, destroy => 0 };
+            if (not $res) {
+                die "Unable to tie sorted conversations (in fork)";
+            }
+
+            for (;;) {
+                (tied @sorted_conversations)->shlock();
+                my $conversation = shift @sorted_conversations;
+                (tied @sorted_conversations)->shunlock();
+                if (not $conversation) {
+                    last;
+                }
+                my $db_conversation = $db->{$ws_name}->{$conversation} || {};
+                $self->_receive_conversation($db_conversation,
+                                             \%conversation_map,
+                                             $conversation);
+                my $name = md5_hex($conversation);
+                write_file("$finished_dir/$name",
+                           encode_json([$conversation,
+                                        $db_conversation]));
+            }
+            exit();
+        }
     }
+    for my $pid (@pids) {
+        waitpid($pid, 0);
+    }
+
+    my $dh;
+    opendir $dh, $finished_dir or die $!;
+    while (my $entry = readdir($dh)) {
+        if ($entry =~ /^\./) {
+            next;
+        }
+        my ($conversation, $db_conversation) =
+            @{decode_json(read_file("$finished_dir/$entry"))};
+        $db->{$ws_name}->{$conversation} = $db_conversation;
+    }
+
     write_file($path, encode_json($db));
 }
 

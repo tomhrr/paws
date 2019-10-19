@@ -97,4 +97,6 @@ $paws->receive(110);
 @files = `find $mail_dir -type f`;
 is(@files, 12, 'Edited message not retrieved again');
 
+$server->shutdown();
+
 1;

@@ -16,7 +16,7 @@ use List::Util qw(first);
 use MIME::Parser;
 use YAML;
 
-use Test::More tests => 3;
+use Test::More tests => 2;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -30,6 +30,7 @@ for my $dir (qw(cur new tmp)) {
 }
 
 my $config = {
+    processes => 10,
     domain_name => 'slack.alt',
     user_email => 'test@example.com',
     workspaces => {
@@ -43,7 +44,7 @@ my $config = {
             ],
         }
     },
-    sender => { 
+    sender => {
         bounce_dir => $bounce_dir,
         fallback_sendmail => '/bin/true',
     },
@@ -73,34 +74,9 @@ $paws->receive(1);
 my @files = `find $mail_dir -type f`;
 is(@files, 11, 'Got 11 mails');
 
-my $mail4 = File::Temp->new();
-print $mail4 q(Content-Type: text/plain; charset="UTF-8"
-Content-Disposition: inline
-Content-Transfer-Encoding: quoted-printable
-MIME-Version: 1.0
-Date: Thu, 16 May 2019 15:39:47 +1000
-From: somewhere@example.org
-To: im/user4@test.slack.alt
-Subject: Message from im/slackbot
-Message-ID: <1557985187.000100.im/slackbot@test.slack.alt>
-Reply-To: im/slackbot@test.slack.alt
-
-If you're not sure how to do something in Slack, *just type your question below*.
-
-Or press these buttons to learn about the following topics:);
-$mail4->flush();
-$mail4->seek(0, SEEK_SET);
-
-$paws->send(['slack.alt'], $mail4);
-$paws->send_queued();
-
-$paws->receive(50);
+$paws->receive(10);
 @files = `find $mail_dir -type f`;
-is(@files, 11, 'Still only 11 mails');
-
-$paws->receive(60);
-@files = `find $bounce_dir -type f`;
-is(@files, 1, 'Message correctly recorded as bounce');
+is(@files, 11, 'Still have 11 mails');
 
 $server->shutdown();
 

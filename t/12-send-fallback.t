@@ -97,4 +97,6 @@ $paws->receive(10);
 @files = `find $mail_dir -type f`;
 is(@files, 11, 'Still have 11 mails (mail send to fallback)');
 
+$server->shutdown();
+
 1;

@@ -77,4 +77,6 @@ my $found =
         @aliases;
 ok($found, 'Found slackbot alias in alias list');
 
+$server->shutdown();
+
 1;

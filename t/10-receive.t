@@ -77,4 +77,6 @@ $paws->receive(10);
 @files = `find $mail_dir -type f`;
 is(@files, 11, 'Still have 11 mails');
 
+$server->shutdown();
+
 1;
