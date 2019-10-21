@@ -35,6 +35,7 @@ my $output = WriteMakefile(
         'IO::Capture::Stderr' => 0,
         'IPC::Shareable'      => 0,
         'Digest::MD5'         => 0,
+        'HTTP::Async'         => 0,
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'App-Paws-*' },

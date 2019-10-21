@@ -69,6 +69,13 @@ $App::Paws::DB_DIR = $db_dir;
 $App::Paws::Context::SLACK_BASE_URL = $url;
 
 my $paws = App::Paws->new();
+my $high = 1000000;
+$paws->{'context'}->{'runner'}->{'rates'} = {
+    'users.list'            => $high,
+    'conversations.list'    => $high,
+    'conversations.replies' => $high,
+    'conversations.history' => $high,
+};
 
 my @aliases = @{$paws->aliases()};
 my $found =

@@ -5,6 +5,7 @@ use strict;
 
 use App::Paws;
 use App::Paws::Context;
+use App::Paws::Runner;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
@@ -16,7 +17,7 @@ use List::Util qw(first);
 use MIME::Parser;
 use YAML;
 
-use Test::More tests => 5;
+use Test::More tests => 2;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -43,7 +44,7 @@ my $config = {
             ],
         }
     },
-    sender => { 
+    sender => {
         bounce_dir => $bounce_dir,
         fallback_sendmail => '/bin/true',
     },
@@ -76,35 +77,52 @@ $paws->{'context'}->{'runner'}->{'rates'} = {
     'conversations.replies' => $high,
     'conversations.history' => $high,
 };
-$paws->receive(1);
-my @files = `find $mail_dir -type f`;
-is(@files, 11, 'Got 11 mails');
 
-my $ua = LWP::UserAgent->new();
-my $req = HTTP::Request->new();
-$req->method('POST');
-$req->uri($url.'/chat.delete');
-$req->content(encode_json({ channel => 'C00000001',
-                            ts      => '2.1' }));
-my $res = $ua->request($req);
-ok($res->is_success(), 'Deleted message successfully');
+my $runner = App::Paws::Runner->new(
+    rates => {
+        'users.list'            => 200,
+        'conversations.list'    => 200,
+        'conversations.replies' => 500,
+        'conversations.history' => 500,
+    }
+);
 
-$config->{'workspaces'}->{'test'}->{'modification_window'} = 3600;
-print $config_path YAML::Dump($config);
-$config_path->flush();
-$paws = App::Paws->new();
+my $ws = $paws->{'context'}->{'workspaces'}->{'test'};
+my $req = $ws->standard_get_request_only(
+    '/conversations.list',
+    { types => 'public_channel,private_channel,mpim,im' }
+);
+my $id = 
+    $runner->add('conversations.list',
+             $req,
+             [],
+             sub {
+                my ($runner, $res) = @_;
+                my $id = $runner->add('conversations.list',
+                             $req,
+                             [],
+                             sub { return 'done' });
+                return $id;
+             });
+my $count = 0;
+for (1..10) {
+    $runner->add('conversations.list',
+             $req,
+             [['conversations.list', $id]],
+             sub { $count++ });
+}
 
-$paws->receive(80);
-@files = `find $mail_dir -type f`;
-is(@files, 12, 'Deletion message added');
+for (;;) {
+    my $res = $runner->poke();
+    if ($res) {
+        last;
+    }
+}
+is($count, 10, 'Finished 10 additional jobs');
 
-$paws->receive(90);
-@files = `find $mail_dir -type f`;
-is(@files, 12, 'Deletion message not added again');
-
-$paws->receive(100);
-@files = `find $mail_dir -type f`;
-is(@files, 12, 'Deletion message not added again');
+my $second_id = $runner->get_result('conversations.list', $id);
+my $last_result = $runner->get_result('conversations.list', $second_id);
+is($last_result, 'done', 'Got correct last result');
 
 $server->shutdown();
 

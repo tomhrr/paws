@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use App::Paws::Workspace;
+use App::Paws::Runner;
 
 our $SLACK_BASE_URL = 'https://slack.com/api';
 
@@ -17,7 +18,15 @@ sub new
         queue_directory => $args{'queue_directory'},
         db_directory    => $args{'db_directory'},
         slack_base_url  => $SLACK_BASE_URL,
-        ua              => LWP::UserAgent->new()
+        ua              => LWP::UserAgent->new(),
+        runner          => App::Paws::Runner->new(
+	    rates => {
+		'users.list'            => 20,
+		'conversations.list'    => 20,
+		'conversations.replies' => 50,
+		'conversations.history' => 50,
+	    }
+        ),
     };
 
     bless $self, $class;
@@ -41,6 +50,11 @@ sub new
 sub ua
 {
     return $_[0]->{'ua'};
+}
+
+sub runner
+{
+    return $_[0]->{'runner'};
 }
 
 sub domain_name

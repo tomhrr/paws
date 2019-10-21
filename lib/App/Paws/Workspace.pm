@@ -64,7 +64,7 @@ sub conversation_to_name
     return "$type/$name";
 }
 
-sub standard_get_request
+sub standard_get_request_only
 {
     my ($self, $path, $query_form) = @_;
 
@@ -77,6 +77,14 @@ sub standard_get_request
     $uri->query_form(%{$query_form});
     $req->uri($uri);
     $req->method('GET');
+    return $req;
+}
+
+sub standard_get_request
+{
+    my ($self, $path, $query_form) = @_;
+
+    my $req = $self->standard_get_request_only($path, $query_form);
     my $ua = LWP::UserAgent->new();
     my $res = $ua->request($req);
     if (not $res->is_success()) {
@@ -115,11 +123,41 @@ sub get_replies
     );
 }
 
+sub get_replies_request
+{
+    my ($self, $conversation_id, $thread_ts, $last_ts, $latest_ts,
+        $cursor) = @_;
+
+    return $self->standard_get_request_only(
+        '/conversations.replies',
+        { channel => $conversation_id,
+          ts      => $thread_ts,
+          limit   => $LIMIT,
+          oldest  => $last_ts,
+          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
+          ($cursor    ? (cursor => $cursor) : ()) }
+    );
+}
+
 sub get_history
 {
     my ($self, $conversation_id, $last_ts, $latest_ts, $cursor) = @_;
 
     return $self->standard_get_request(
+        '/conversations.history',
+        { channel => $conversation_id,
+          limit   => $LIMIT,
+          oldest  => $last_ts,
+          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
+          ($cursor    ? (cursor => $cursor) : ()) }
+    );
+}
+
+sub get_history_request
+{
+    my ($self, $conversation_id, $last_ts, $latest_ts, $cursor) = @_;
+
+    return $self->standard_get_request_only(
         '/conversations.history',
         { channel => $conversation_id,
           limit   => $LIMIT,
