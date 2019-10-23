@@ -7,6 +7,7 @@ use Data::Dumper;
 use HTTP::Request;
 use JSON::XS qw(decode_json);
 use LWP::UserAgent;
+use Time::HiRes qw(time);
 
 our $LIMIT = 100;
 
@@ -80,46 +81,13 @@ sub standard_get_request_only
     return $req;
 }
 
-sub standard_get_request
-{
-    my ($self, $path, $query_form) = @_;
-
-    my $req = $self->standard_get_request_only($path, $query_form);
-    my $ua = LWP::UserAgent->new();
-    my $res = $ua->request($req);
-    if (not $res->is_success()) {
-        die Dumper($res);
-    }
-    my $data = decode_json($res->content());
-    if ($data->{'error'}) {
-        die Dumper($data);
-    }
-    return $data;
-}
-
-sub get_conversations
+sub get_conversations_request
 {
     my ($self) = @_;
 
-    return $self->standard_get_request(
+    return $self->standard_get_request_only(
         '/conversations.list',
         { types => 'public_channel,private_channel,mpim,im' }
-    );
-}
-
-sub get_replies
-{
-    my ($self, $conversation_id, $thread_ts, $last_ts, $latest_ts,
-        $cursor) = @_;
-
-    return $self->standard_get_request(
-        '/conversations.replies',
-        { channel => $conversation_id,
-          ts      => $thread_ts,
-          limit   => $LIMIT,
-          oldest  => $last_ts,
-          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
-          ($cursor    ? (cursor => $cursor) : ()) }
     );
 }
 
@@ -132,20 +100,6 @@ sub get_replies_request
         '/conversations.replies',
         { channel => $conversation_id,
           ts      => $thread_ts,
-          limit   => $LIMIT,
-          oldest  => $last_ts,
-          ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
-          ($cursor    ? (cursor => $cursor) : ()) }
-    );
-}
-
-sub get_history
-{
-    my ($self, $conversation_id, $last_ts, $latest_ts, $cursor) = @_;
-
-    return $self->standard_get_request(
-        '/conversations.history',
-        { channel => $conversation_id,
           limit   => $LIMIT,
           oldest  => $last_ts,
           ($latest_ts ? (latest => $latest_ts, inclusive => 1) : ()),
@@ -175,21 +129,40 @@ sub _get_users
         return $self->{'users'};
     }
 
-    my $data = $self->standard_get_request(
+    my $context = $self->{'context'};
+    my $runner = $context->{'runner'};
+
+    my $req = $self->standard_get_request_only(
         '/users.list',
         { limit => $LIMIT }
     );
 
     my @data_list;
-    push @data_list, $data;
+    $runner->add(
+        'users.list', $req, [], sub {
+            my ($runner, $res, $fn) = @_;
+            if (not $res->is_success()) {
+                die Dumper($res);
+            }
+            my $data = decode_json($res->content());
+            if ($data->{'error'}) {
+                die Dumper($data);
+            }
+            push @data_list, $data;
 
-    while ($data->{'response_metadata'}->{'next_cursor'}) {
-        $data = $self->standard_get_request(
-            '/users.list',
-            { limit  => $LIMIT,
-              cursor => $data->{'response_metadata'}->{'next_cursor'} }
-        );
-        push @data_list, $data;
+            if ($data->{'response_metadata'}->{'next_cursor'}) {
+                my $req = $self->standard_get_request_only(
+                    '/users.list',
+                    { limit  => $LIMIT,
+                    cursor => $data->{'response_metadata'}->{'next_cursor'} }
+                );
+                $runner->add('users.list', $req, [], $fn);
+            }
+        }
+    );
+
+    while (not $runner->poke()) {
+        sleep(0.1);
     }
 
     my @users =

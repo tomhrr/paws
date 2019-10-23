@@ -117,7 +117,23 @@ sub _send_queued_single
     my $ws = $context->{'workspaces'}->{$ws_name};
     my $token = $ws->{'token'};
 
-    my $data = $ws->get_conversations();
+    my $req = $ws->get_conversations_request();
+    my $data;
+    my $runner = $self->{'context'}->runner();
+    $runner->add('conversations.list',
+                 $req, [], sub {
+                    my ($self, $res) = @_;
+                    if (not $res->is_success()) {
+                        die Dumper($res);
+                    }
+                    $data = decode_json($res->content());
+                    if ($data->{'error'}) {
+                        die Dumper($data);
+                    } });
+    while (not $runner->poke()) {
+        sleep(0.1);
+    }
+
     my $conversations = $data->{'channels'};
     my %conversation_map =
         map { $ws->conversation_to_name($_) => $_->{'id'} }
@@ -172,7 +188,7 @@ sub _send_queued_single
         ($thread_ts ? (thread_ts => $thread_ts) : ())
     );
 
-    my $req = HTTP::Request->new();
+    $req = HTTP::Request->new();
     $req->header('Content-Type'  => 'application/json');
     $req->header('Authorization' => 'Bearer '.$token);
     $req->uri($context->slack_base_url().'/chat.postMessage');

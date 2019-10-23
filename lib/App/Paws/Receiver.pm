@@ -131,8 +131,14 @@ sub _add_attachment
     $req->method('GET');
     my $filename = $file->{'url_private'};
     $filename =~ s/.*\///;
-    my $ua = $context->ua();
-    my $res = $ua->request($req);
+    my $res;
+    my $runner = $context->{'runner'};
+    $runner->add('conversations.replies', $req, [],
+                 sub { my ($runner, $internal_res) = @_;
+                       $res = $internal_res; });
+    while (not $res) {
+        $runner->poke();
+    }
     $entity->attach(Type     => $file->{'mimetype'},
                     Data     => $res->content(),
                     Filename => $filename);
@@ -589,7 +595,6 @@ sub _run_internal
 
     my $ws = $self->{'workspace'};
     my $context = $self->{'context'};
-    my $ua = $context->ua();
     my $domain_name = $context->domain_name();
     my $to = $context->user_email();
     my $name = $self->{'name'};
@@ -600,7 +605,23 @@ sub _run_internal
     }
     my $db = decode_json(read_file($path));
 
-    my $data = $ws->get_conversations();
+    my $req = $ws->get_conversations_request();
+    my $data;
+    my $runner = $self->{'context'}->runner();
+    $runner->add('conversations.list',
+                 $req, [], sub {
+                    my ($self, $res) = @_;
+                    if (not $res->is_success()) {
+                        die Dumper($res);
+                    }
+                    $data = decode_json($res->content());
+                    if ($data->{'error'}) {
+                        die Dumper($data);
+                    } });
+    while (not $runner->poke()) {
+        sleep(0.1);
+    }
+
     my @conversations =
         grep { $_->{'is_im'} or $_->{'is_member'} }
             @{$data->{'channels'}};
@@ -642,7 +663,6 @@ sub _run_internal
                                         \%conversation_map,
                                         $conversation);
     }
-    my $runner = $self->{'context'}->runner();
     while (not $runner->poke()) {
         sleep(0.1);
     }
