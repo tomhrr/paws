@@ -98,6 +98,12 @@ $config->{'workspaces'}->{'test'}->{'modification_window'} = 3600;
 print $config_path YAML::Dump($config);
 $config_path->flush();
 $paws = App::Paws->new();
+$paws->{'context'}->{'runner'}->{'rates'} = {
+    'users.list'            => $high,
+    'conversations.list'    => $high,
+    'conversations.replies' => $high,
+    'conversations.history' => $high,
+};
 
 $paws->receive(80);
 @files = `find $mail_dir -type f`;
