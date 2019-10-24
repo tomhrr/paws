@@ -3,6 +3,7 @@ package App::Paws::Receiver;
 use warnings;
 use strict;
 
+use Data::Dumper;
 use Digest::MD5 qw(md5_hex);
 use Encode;
 use Fcntl qw(O_CREAT O_EXCL);
@@ -383,7 +384,6 @@ sub _receive_conversation
                 if ($data->{'error'}) {
                     die Dumper($data);
                 }
-
                 $db_conversation->{'first_msg_ts'}
                     ||= minstr map { $_->{'ts'} } @{$data->{'messages'}};
                 my $first_ts = $db_conversation->{'first_msg_ts'};
@@ -450,6 +450,9 @@ sub _receive_conversation_threads
         eval {
             for my $thread_ts (@thread_tss) {
                 my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+                if ($last_ts < (time() - (60 * 60 * 24 * 7))) {
+                    next;
+                }
                 my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'};
                 my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'};
                 my $edits = $db_thread_ts->{$thread_ts}->{'edits'};
@@ -472,7 +475,6 @@ sub _receive_conversation_threads
                         if ($replies->{'error'}) {
                             die Dumper($replies);
                         }
-
                         my %seen_messages;
                         for my $sub_message (@{$replies->{'messages'}}) {
                             $seen_messages{$sub_message->{'ts'}} = 1;
@@ -537,6 +539,9 @@ sub _receive_conversation_threads
 
     for my $thread_ts (@thread_tss) {
         my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+        if ($last_ts < (time() - (60 * 60 * 24 * 7))) {
+            next;
+        }
         my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'} || {};
         my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'} || {};
         my $edits = $db_thread_ts->{$thread_ts}->{'edits'} || {};
@@ -619,7 +624,7 @@ sub _run_internal
                         die Dumper($data);
                     } });
     while (not $runner->poke()) {
-        sleep(0.1);
+        sleep(0.01);
     }
 
     my @conversations =
@@ -664,7 +669,7 @@ sub _run_internal
                                         $conversation);
     }
     while (not $runner->poke()) {
-        sleep(0.1);
+        sleep(0.01);
     }
 
     for my $conversation (@sorted_conversations) {
@@ -675,7 +680,7 @@ sub _run_internal
                                              $conversation);
     }
     while (not $runner->poke()) {
-        sleep(0.1);
+        sleep(0.01);
     }
 
     write_file($path, encode_json($db));

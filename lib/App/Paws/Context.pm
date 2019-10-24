@@ -21,10 +21,10 @@ sub new
         ua              => LWP::UserAgent->new(),
         runner          => App::Paws::Runner->new(
 	    rates => {
-		'users.list'            => 20,
-		'conversations.list'    => 20,
-		'conversations.replies' => 50,
-		'conversations.history' => 50,
+		'users.list'            => 200,
+		'conversations.list'    => 200,
+		'conversations.replies' => 500,
+		'conversations.history' => 500,
 	    }
         ),
     };
