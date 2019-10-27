@@ -450,7 +450,8 @@ sub _receive_conversation_threads
         eval {
             for my $thread_ts (@thread_tss) {
                 my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
-                if ($last_ts < (time() - (60 * 60 * 24 * 7))) {
+                if (($last_ts != 1)
+                        and ($last_ts < (time() - $ws->thread_expiry()))) {
                     next;
                 }
                 my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'};
@@ -539,7 +540,8 @@ sub _receive_conversation_threads
 
     for my $thread_ts (@thread_tss) {
         my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
-        if ($last_ts < (time() - (60 * 60 * 24 * 7))) {
+        if (($last_ts != 1)
+                and ($last_ts < (time() - $ws->thread_expiry()))) {
             next;
         }
         my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'} || {};

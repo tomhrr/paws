@@ -32,7 +32,12 @@ sub token
 
 sub modification_window
 {
-    return $_[0]->{'modification_window'};
+    return ($_[0]->{'modification_window'} || 0);
+}
+
+sub thread_expiry
+{
+    return ($_[0]->{'thread_expiry'} || (60 * 60 * 24 * 7));
 }
 
 sub user_id_to_name

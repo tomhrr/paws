@@ -41,6 +41,10 @@ workspaces:
     # last-retrieved message in which to check for edits to messages
     # (defaults to 0).
     modification_window: 3600
+    # The length of time (in seconds) after which a thread should be
+    # considered 'expired', and will no longer be checked for new
+    # messages (defaults to 7 days).
+    thread_expiry: 3600
 # Receiver configuration.
 receivers:
     # The type of the receiver.

@@ -41,6 +41,7 @@ my $config = {
                 'im/slackbot',
                 'im/user3',
             ],
+            thread_expiry => (60 * 60 * 24 * 7 * 52 * 100)
         }
     },
     sender => { 
