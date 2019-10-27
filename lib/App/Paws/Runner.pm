@@ -39,26 +39,21 @@ sub _init_tag
 
 sub process_tmr
 {
-    my ($self, $res) = @_;
+    my ($self, $tag, $res) = @_;
 
     warn "Received 429 response, reducing query rate.\n";
 
-    my @tags = (keys %{$self->{'tags'}});
-    for my $tag (@tags) {
-        my $async = $self->{'asyncs'}->{$tag};
-        $async->remove_all();
-        my $pending = $self->{'pending'}->{$tag};
-        my $c = scalar(values %{$self->{'incomplete'}->{$tag}});
-        unshift @{$pending}, values %{$self->{'incomplete'}->{$tag}};
-        $self->{'incomplete'}->{$tag} = {};
-    }
+    my $async = $self->{'asyncs'}->{$tag};
+    $async->remove_all();
+    my $pending = $self->{'pending'}->{$tag};
+    my $c = scalar(values %{$self->{'incomplete'}->{$tag}});
+    unshift @{$pending}, values %{$self->{'incomplete'}->{$tag}};
+    $self->{'incomplete'}->{$tag} = {};
 
     my $ra = $res->header('Retry-After');
     sleep($ra);
 
-    for my $tag (@tags) {
-        $self->{'rates'}->{$tag} /= 2;
-    }
+    $self->{'rates'}->{$tag} /= 2;
 
     return 1;
 }
@@ -89,7 +84,7 @@ sub poke
         }
         while (my ($res, $iid) = $async->next_response()) {
             if ($res->code() == 429) {
-                $self->process_tmr($res);
+                $self->process_tmr($tag, $res);
                 goto start_again;
             }
 
