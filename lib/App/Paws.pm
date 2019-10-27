@@ -10,6 +10,7 @@ use App::Paws::Receiver::MDA;
 
 use Cwd;
 use File::Slurp qw(read_file write_file);
+use List::Util qw(first);
 use YAML;
 
 our $CONFIG_DIR  = $ENV{'HOME'}.'/.paws';
@@ -67,11 +68,21 @@ sub send_queued
 
 sub receive
 {
-    my ($self, $counter) = @_;
+    my ($self, $counter, $name) = @_;
 
     my $context = $self->{'context'};
     my $receiver_specs = $context->{'config'}->{'receivers'};
-    for my $receiver_spec (@{$receiver_specs}) {
+    my @receiver_specs_to_process = @{$receiver_specs};
+    if ($name) {
+        my $receiver_spec =
+            first { $_->{'name'} eq $name }
+                @{$receiver_specs};
+        if (not $receiver_spec) {
+            die "Unable to find named receiver";
+        }
+        @receiver_specs_to_process = $receiver_spec;
+    }
+    for my $receiver_spec (@receiver_specs_to_process) {
         my $type = $receiver_spec->{'type'};
         my $module_name = "App::Paws::Receiver::$type";
         my $receiver = $module_name->new(

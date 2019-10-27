@@ -34,7 +34,7 @@ sub _lock
     my ($self) = @_;
 
     my $db_dir = $self->{'context'}->db_directory();
-    my $lock = $db_dir.'/lock';
+    my $lock = $db_dir.'/'.$self->{'name'}.'-lock';
     my $fh;
     my $count = 10;
     for (;;) {
@@ -57,7 +57,7 @@ sub _unlock
     my ($self) = @_;
 
     my $db_dir = $self->{'context'}->db_directory();
-    my $lock = $db_dir.'/lock';
+    my $lock = $db_dir.'/'.$self->{'name'}.'-lock';
     unlink $lock;
 }
 

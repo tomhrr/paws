@@ -4,8 +4,22 @@ use warnings;
 use strict;
 
 use App::Paws;
+use Getopt::Long;
+
+my $name;
+my $res = GetOptions("name=s", \$name);
+if (not $res) {
+    print <<EOF;
+$0 - receive messages from Slack
+
+Options:
+
+    --name={name}   Receive messages for the named receiver only.
+EOF
+    exit(10);
+}
 
 my $paws = App::Paws->new();
-$paws->receive();
+$paws->receive(1, ($name ? ($name) : ()));
 
 1;
