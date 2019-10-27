@@ -21,10 +21,10 @@ sub new
         ua              => LWP::UserAgent->new(),
         runner          => App::Paws::Runner->new(
 	    rates => {
-		'users.list'            => 200,
-		'conversations.list'    => 200,
-		'conversations.replies' => 500,
-		'conversations.history' => 500,
+		'users.list'            => 100,
+		'conversations.list'    => 100,
+		'conversations.replies' => 250,
+		'conversations.history' => 250,
 	    }
         ),
     };
@@ -39,6 +39,7 @@ sub new
                   name    => $ws_name,
                   %{$ws_spec}
               );
+              $ws->_init_users();
               $ws_name => $ws }
             keys %{$args{'config'}->{'workspaces'}};
 

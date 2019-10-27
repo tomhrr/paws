@@ -7,7 +7,7 @@ use Data::Dumper;
 use HTTP::Request;
 use JSON::XS qw(decode_json);
 use LWP::UserAgent;
-use Time::HiRes qw(time);
+use Time::HiRes qw(sleep);
 
 our $LIMIT = 100;
 
@@ -16,6 +16,7 @@ sub new
     my $class = shift;
     my %args = @_;
     my $self = \%args;
+    $self->{'users_loaded'} = 0;
     bless $self, $class;
     return $self;
 }
@@ -126,13 +127,9 @@ sub get_history_request
     );
 }
 
-sub _get_users
+sub _init_users
 {
     my ($self) = @_;
-
-    if ($self->{'users'}) {
-        return $self->{'users'};
-    }
 
     my $context = $self->{'context'};
     my $runner = $context->{'runner'};
@@ -142,7 +139,9 @@ sub _get_users
         { limit => $LIMIT }
     );
 
-    my @data_list;
+    $self->{'users_loading'} = 1;
+    $self->{'users_loaded'} = 0;
+    $self->{'users'} = [];
     $runner->add(
         'users.list', $req, [], sub {
             my ($runner, $res, $fn) = @_;
@@ -153,31 +152,46 @@ sub _get_users
             if ($data->{'error'}) {
                 die Dumper($data);
             }
-            push @data_list, $data;
+            my @users =
+                grep { not $_->{'deleted'} }
+                    @{$data->{'members'}};
+            push @{$self->{'users'}}, @users;
 
             if ($data->{'response_metadata'}->{'next_cursor'}) {
                 my $req = $self->standard_get_request_only(
                     '/users.list',
                     { limit  => $LIMIT,
-                    cursor => $data->{'response_metadata'}->{'next_cursor'} }
+                      cursor => $data->{'response_metadata'}
+                                     ->{'next_cursor'} }
                 );
                 $runner->add('users.list', $req, [], $fn);
+            } else {
+                $self->{'users_loading'} = 0;
+                $self->{'users_loaded'} = 1;
             }
         }
     );
+}
+
+sub _get_users
+{
+    my ($self) = @_;
+
+    if ($self->{'users_loaded'}) {
+        return $self->{'users'};
+    }
+    if (not $self->{'users_loading'}) {
+        $self->_init_users();
+    }
+
+    my $context = $self->{'context'};
+    my $runner = $context->{'runner'};
 
     while (not $runner->poke()) {
         sleep(0.1);
     }
 
-    my @users =
-        grep { not $_->{'deleted'} }
-        map  { @{$_->{'members'}} }
-            @data_list;
-
-    $self->{'users'} = \@users;
-
-    return \@users;
+    return $self->{'users'};
 }
 
 sub get_user_map
