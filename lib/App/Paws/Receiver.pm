@@ -611,6 +611,9 @@ sub _run_internal
         write_file($path, '{}');
     }
     my $db = decode_json(read_file($path));
+    my $conversation_map = $db->{'conversation-map'} || {};
+    my %previous_map = %{$conversation_map};
+    my $has_cached = (keys %previous_map > 0) ? 1 : 0;
 
     my $req = $ws->get_conversations_request();
     my $data;
@@ -624,18 +627,28 @@ sub _run_internal
                     $data = decode_json($res->content());
                     if ($data->{'error'}) {
                         die Dumper($data);
-                    } });
-    while (not $runner->poke()) {
-        sleep(0.01);
+                    }
+                    my @conversations =
+                        grep { $_->{'is_im'} or $_->{'is_member'} }
+                            @{$data->{'channels'}};
+                    my %conversation_map =
+                        map { $ws->conversation_to_name($_) => $_->{'id'} }
+                            @conversations;
+                    $db->{'conversation-map'} =
+                        \%conversation_map;
+                    $conversation_map =
+                        \%conversation_map;
+                 });
+    my $used_cached = 0;
+    if ($has_cached) {
+        $used_cached = 1;
+    } else {
+        while (not $runner->poke()) {
+            sleep(0.01);
+        }
     }
 
-    my @conversations =
-        grep { $_->{'is_im'} or $_->{'is_member'} }
-            @{$data->{'channels'}};
-    my %conversation_map =
-        map { $ws->conversation_to_name($_) => $_->{'id'} }
-            @conversations;
-    my @conversation_names = keys %conversation_map;
+    my @conversation_names = keys %{$conversation_map};
 
     my @actual_conversations =
         uniq
@@ -650,15 +663,7 @@ sub _run_internal
         map { $_ => $db->{$ws_name}->{$_}->{'last_ts'} || 1 }
             @actual_conversations;
 
-    my @sorted_conversations;
-    my $res = tie @sorted_conversations, 'IPC::Shareable', 'pws1',
-                  { create => 1 };
-    if (not $res) {
-        die "Unable to tie sorted conversations";
-    }
-    my $finished_dir = tempdir();
-
-    @sorted_conversations =
+    my @sorted_conversations =
         sort { $conversation_to_last_ts{$b} <=>
                $conversation_to_last_ts{$a} }
             @actual_conversations;
@@ -667,18 +672,37 @@ sub _run_internal
         my $db_conversation = $db->{$ws_name}->{$conversation} || {};
         $db->{$ws_name}->{$conversation} = $db_conversation;
         $self->_receive_conversation($db_conversation,
-                                        \%conversation_map,
+                                        $conversation_map,
                                         $conversation);
     }
     while (not $runner->poke()) {
         sleep(0.01);
     }
+    my @new_conversations;
+    if ($has_cached) {
+        for my $name (keys %{$conversation_map}) {
+            if (not $previous_map{$name}) {
+                push @new_conversations, $name;
+            }
+        }
+        for my $conversation (@new_conversations) {
+            my $db_conversation = $db->{$ws_name}->{$conversation} || {};
+            $db->{$ws_name}->{$conversation} = $db_conversation;
+            $self->_receive_conversation($db_conversation,
+                                            $conversation_map,
+                                            $conversation);
+        }
+        while (not $runner->poke()) {
+            sleep(0.01);
+        }
+    }
 
-    for my $conversation (@sorted_conversations) {
+    for my $conversation (@sorted_conversations,
+                          @new_conversations) {
         my $db_conversation = $db->{$ws_name}->{$conversation} || {};
         $db->{$ws_name}->{$conversation} = $db_conversation;
         $self->_receive_conversation_threads($db_conversation,
-                                             \%conversation_map,
+                                             $conversation_map,
                                              $conversation);
     }
     while (not $runner->poke()) {
