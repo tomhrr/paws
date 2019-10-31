@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Data::Dumper;
+use Digest::MD5 qw(md5_hex);
 use Fcntl qw(O_CREAT O_EXCL);
 use File::Slurp qw(read_file write_file);
 use File::Temp qw(tempdir);
@@ -11,6 +12,7 @@ use HTTP::Request;
 use HTTP::Request::Common qw(POST);
 use JSON::XS qw(decode_json encode_json);
 use List::Util qw(first);
+use List::MoreUtils qw(uniq);
 use LWP::UserAgent;
 use MIME::Entity;
 use MIME::Parser;
@@ -101,50 +103,123 @@ sub _send_queued_single
 
     my $to = $entity->head()->decode()->get('To');
     if ($to =~ /</) {
-        $to =~ s/.*<(.*)>.*/$1/;
+        $to =~ s/.*<(.*)>.*/$1/g;
     }
     chomp $to;
-    my ($local, $domain) = split /@/, $to;
-    my ($type, $name) = split /\s*\/\s*/, $local;
-    my ($ws_name) = ($domain =~ /(.*?)\./);
-    my $thread_ts;
-    if ($name =~ /\+/) {
-        ($thread_ts) = ($name =~ /.*\+(.*)/);
-        $name =~ s/\+.*//;
+    my $cc = $entity->head()->decode()->get('Cc') || '';
+    if ($cc =~ /</) {
+        $cc =~ s/.*<(.*)>.*/$1/g;
     }
+    chomp $cc;
     my $message_id = $entity->head()->decode()->get('Message-ID');
 
-    my $ws = $context->{'workspaces'}->{$ws_name};
-    my $token = $ws->{'token'};
+    my $token;
+    my $ws;
+    my $thread_ts;
 
-    my $req = $ws->get_conversations_request();
-    my $data;
-    my $runner = $self->{'context'}->runner();
-    $runner->add('conversations.list',
-                 $req, sub {
-                    my ($self, $res) = @_;
-                    if (not $res->is_success()) {
-                        die Dumper($res);
-                    }
-                    $data = decode_json($res->content());
-                    if ($data->{'error'}) {
-                        die Dumper($data);
-                    } });
-    while (not $runner->poke()) {
-        sleep(0.1);
+    my $conversation_id;
+    if ($to !~ /,/) {
+        my ($local, $domain) = split /@/, $to;
+        my ($type, $name) = split /\s*\/\s*/, $local;
+        my ($ws_name) = ($domain =~ /(.*?)\./);
+
+        $ws = $context->{'workspaces'}->{$ws_name};
+        my $req = $ws->get_conversations_request();
+        my $data;
+        my $runner = $self->{'context'}->runner();
+        $runner->add('conversations.list',
+                    $req, sub {
+                        my ($self, $res) = @_;
+                        if (not $res->is_success()) {
+                            die Dumper($res);
+                        }
+                        $data = decode_json($res->content());
+                        if ($data->{'error'}) {
+                            die Dumper($data);
+                        } });
+        while (not $runner->poke()) {
+            sleep(0.1);
+        }
+
+        if ($name =~ /\+/) {
+            ($thread_ts) = ($name =~ /.*\+(.*)/);
+            $name =~ s/\+.*//;
+        }
+
+        $token = $ws->{'token'};
+
+        my $conversations = $data->{'channels'};
+        my %conversation_map =
+            map { $ws->conversation_to_name($_) => $_->{'id'} }
+                @{$conversations};
+        $conversation_id =
+            $conversation_map{$local}
+                || $conversation_map{"im/$local"};
+    }
+    if (not $conversation_id) {
+        my @recipients = ((split /\s*,\s*/, $to), (split /\s*,\s*/, $cc));
+        my @parsed =
+            map { my ($username, $domain) = split /@/, $_;
+                  [ $username, $domain ] }
+                @recipients;
+        my @domains = uniq map { $_->[1] } @parsed;
+        if (@domains > 1) {
+            $self->_write_bounce($message_id,
+                                "unable to send message to multiple ".
+                                "workspaces");
+            return 1;
+        }
+        my ($ws_name) = ($domains[0] =~ /(.*?)\./);
+        $ws = $context->{'workspaces'}->{$ws_name};
+        $token = $ws->{'token'};
+        my $user_map = $ws->get_user_map();
+        my @user_ids;
+        for my $user (@parsed) {
+            my $username = $user->[0];
+            my $user_id = $user_map->{$username};
+            if (not $user_id) {
+                $self->_write_bounce($message_id,
+                                    "invalid username: '$username'");
+                return 1;
+            }
+            push @user_ids, $user_id;
+        }
+        @user_ids = uniq @user_ids;
+        my $user_str = join ',', @user_ids;
+        my $channel_name = md5_hex($user_str);
+
+        my %post_data = (
+            users => $user_str
+        );
+
+        my $req = HTTP::Request->new();
+        $req->header('Content-Type'  => 'application/json; charset=UTF-8');
+        $req->header('Authorization' => 'Bearer '.$token);
+        $req->uri($context->slack_base_url().'/conversations.open');
+        $req->method('POST');
+        $req->content(encode_json(\%post_data));
+
+        my $res = $ua->request($req);
+        if (not $res->is_success()) {
+            $self->_write_bounce($message_id,
+                                "unable to create new conversation: ".
+                                $res->status_line());
+            return 1;
+        }
+        my $data = decode_json($res->decoded_content());
+        if (not $data->{'ok'}) {
+            $self->_write_bounce($message_id,
+                                "unable to create new conversation: ".
+                                $res->decoded_content().": ".
+                                encode_json(\%post_data));
+            return 1;
+        }
+        $conversation_id = $data->{'channel'}->{'id'};
     }
 
-    my $conversations = $data->{'channels'};
-    my %conversation_map =
-        map { $ws->conversation_to_name($_) => $_->{'id'} }
-            @{$conversations};
-    my $conversation_id = $conversation_map{$local};
-
     if (not $conversation_id) {
-        my $message_id = $entity->head()->decode()->get('Message-ID');
         $self->_write_bounce($message_id,
-                             "unable to find conversation ID for ".
-                             "'$local'");
+                             "unable to find conversation ID");
         return 1;
     }
 
@@ -188,7 +263,7 @@ sub _send_queued_single
         ($thread_ts ? (thread_ts => $thread_ts) : ())
     );
 
-    $req = HTTP::Request->new();
+    my $req = HTTP::Request->new();
     $req->header('Content-Type'  => 'application/json');
     $req->header('Authorization' => 'Bearer '.$token);
     $req->uri($context->slack_base_url().'/chat.postMessage');
