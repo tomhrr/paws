@@ -73,7 +73,7 @@ sub poke
         my $time = time();
         if (@{$pending} and ($time > ($last_added + $interval))) {
             my $p = shift @{$pending};
-	    my ($req, $deps, $fn, $id) = @{$p};
+	    my ($req, $fn, $id) = @{$p};
             my $iid = $async->add($req);
             $self->{'incomplete'}->{$tag}->{$iid} = $p;
             $self->{'last_added'}->{$tag} = $time;
@@ -110,14 +110,14 @@ sub poke
 
 sub add
 {
-    my ($self, $tag, $request, $dependencies, $fn) = @_;
+    my ($self, $tag, $request, $fn) = @_;
 
     $self->_init_tag($tag);
 
     my $id = $self->{'id'}->{$tag};
     $self->{'id'}->{$tag}++;
     push @{$self->{'pending'}->{$tag}},
-        [ $request, $dependencies, $fn, $id ];
+        [ $request, $fn, $id ];
     $self->poke();
 
     return $id;

@@ -15,6 +15,7 @@ use Fcntl qw(SEEK_SET);
 use JSON::XS qw(encode_json);
 use List::Util qw(first);
 use MIME::Parser;
+use Time::HiRes qw(sleep);
 use YAML;
 
 use Test::More tests => 2;
@@ -95,12 +96,10 @@ my $req = $ws->standard_get_request_only(
 my $id = 
     $runner->add('conversations.list',
              $req,
-             [],
              sub {
                 my ($runner, $res) = @_;
                 my $id = $runner->add('conversations.list',
                              $req,
-                             [],
                              sub { return 'done' });
                 return $id;
              });
@@ -108,15 +107,11 @@ my $count = 0;
 for (1..10) {
     $runner->add('conversations.list',
              $req,
-             [['conversations.list', $id]],
              sub { $count++ });
 }
 
-for (;;) {
-    my $res = $runner->poke();
-    if ($res) {
-        last;
-    }
+while (not $runner->poke()) {
+    sleep(0.1);
 }
 is($count, 10, 'Finished 10 additional jobs');
 

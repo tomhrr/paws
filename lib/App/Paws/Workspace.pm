@@ -143,7 +143,7 @@ sub _init_users
     $self->{'users_loaded'} = 0;
     $self->{'users'} = [];
     $runner->add(
-        'users.list', $req, [], sub {
+        'users.list', $req, sub {
             my ($runner, $res, $fn) = @_;
             if (not $res->is_success()) {
                 die Dumper($res);
@@ -164,7 +164,7 @@ sub _init_users
                       cursor => $data->{'response_metadata'}
                                      ->{'next_cursor'} }
                 );
-                $runner->add('users.list', $req, [], $fn);
+                $runner->add('users.list', $req, $fn);
             } else {
                 $self->{'users_loading'} = 0;
                 $self->{'users_loaded'} = 1;

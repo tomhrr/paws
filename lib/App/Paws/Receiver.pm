@@ -134,7 +134,7 @@ sub _add_attachment
     $filename =~ s/.*\///;
     my $res;
     my $runner = $context->{'runner'};
-    $runner->add('conversations.replies', $req, [],
+    $runner->add('conversations.replies', $req,
                  sub { my ($runner, $internal_res) = @_;
                        $res = $internal_res; });
     while (not $res) {
@@ -301,7 +301,7 @@ sub _receive_conversation
                                         $stored_last_ts);
             my $runner = $self->{'context'}->runner();
             my $id = $runner->add('conversations.history',
-                        $history_req, [], sub {
+                        $history_req, sub {
                 my ($runner, $res, $fn) = @_;
                 eval {
                     if (not $res->is_success()) {
@@ -339,7 +339,7 @@ sub _receive_conversation
                                                 $data->{'response_metadata'}
                                                     ->{'next_cursor'});
                         $runner->add('conversations.history',
-                            $history_req, [], $fn);
+                            $history_req, $fn);
                     } else {
                         my @deliveries_list =
                             grep { $_ ge ($stored_last_ts - $modification_window)
@@ -374,7 +374,7 @@ sub _receive_conversation
             $ws->get_history_request($conversation_id, $stored_last_ts);
         my $runner = $self->{'context'}->runner();
         my $id = $runner->add('conversations.history',
-                    $history_req, [], sub {
+                    $history_req, sub {
             my ($runner, $res, $fn) = @_;
             eval {
                 if (not $res->is_success()) {
@@ -408,7 +408,7 @@ sub _receive_conversation
                             $conversation_id,
                             $db_conversation->{'last_ts'});
                     $runner->add('conversations.history',
-                        $history_req, [], $fn);
+                        $history_req, $fn);
                 }
             };
             if (my $error = $@) {
@@ -466,7 +466,7 @@ sub _receive_conversation_threads
                                             $last_ts);
                 my $runner = $self->{'context'}->runner();
                 my $id = $runner->add('conversations.replies',
-                            $replies_req, [], sub {
+                            $replies_req, sub {
                     my ($runner, $res, $fn) = @_;
                     eval {
                         if (not $res->is_success()) {
@@ -506,7 +506,7 @@ sub _receive_conversation_threads
                                                 $replies->{'response_metadata'}
                                                         ->{'next_cursor'});
                             $runner->add('conversations.replies',
-                                $replies_req, [], $fn);
+                                $replies_req, $fn);
                         } else {
                             my @deliveries_list =
                                 grep { $_ ge ($last_ts - $modification_window)
@@ -552,7 +552,7 @@ sub _receive_conversation_threads
                                            $thread_ts, $last_ts);
         my $runner = $self->{'context'}->runner();
         my $id = $runner->add('conversations.replies',
-                     $replies_req, [], sub {
+                     $replies_req, sub {
                         my ($runner, $res, $fn) = @_;
                         eval {
 			if (not $res->is_success()) {
@@ -579,7 +579,7 @@ sub _receive_conversation_threads
                             $replies_req = $ws->get_replies_request($conversation_id,
                                                         $thread_ts, $last_ts);
                             my $new_id = $runner->add('conversations.replies',
-                                            $replies_req, [],
+                                            $replies_req,
                                             $fn);
                         }
                     };
@@ -619,7 +619,7 @@ sub _run_internal
     my $data;
     my $runner = $self->{'context'}->runner();
     $runner->add('conversations.list',
-                 $req, [], sub {
+                 $req, sub {
                     my ($self, $res) = @_;
                     if (not $res->is_success()) {
                         die Dumper($res);

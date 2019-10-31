@@ -121,7 +121,7 @@ sub _send_queued_single
     my $data;
     my $runner = $self->{'context'}->runner();
     $runner->add('conversations.list',
-                 $req, [], sub {
+                 $req, sub {
                     my ($self, $res) = @_;
                     if (not $res->is_success()) {
                         die Dumper($res);
