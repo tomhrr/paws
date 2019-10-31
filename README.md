@@ -65,6 +65,17 @@ sender:
   # The maildir directory to which bounce messages should be
   # written.
   bounce_dir: "/home/tomh/maildir/slack-bounce"
+# Rate-limiting configuration.
+rate_limiting:
+  # The initial query rate, as a multiple of the rate documented by
+  # Slack.  Defaults to 5, because Slack tolerates occasional bursts
+  # of traffic past the documented query rate.
+  initial: 10
+  # The backoff rate.  When a 429 Too Many Requests is received, the
+  # relevant query rate will be divided by this number.  Defaults to
+  # 5, so that on receiving a 429 the query rate (if left as default)
+  # is set to the (non-bursty) value recommended by Slack.
+  backoff: 10
 ```
 
 Then, configure your MUA to use `paws-send` as its sendmail command

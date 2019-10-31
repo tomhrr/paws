@@ -54,6 +54,9 @@ my $config = {
         workspace => 'test',
         path      => $mail_dir,
     } ],
+    rate_limiting => {
+        initial => 1000,
+    },
 };
 
 my $config_path = File::Temp->new();
@@ -70,13 +73,6 @@ $App::Paws::DB_DIR = $db_dir;
 $App::Paws::Context::SLACK_BASE_URL = $url;
 
 my $paws = App::Paws->new();
-my $high = 1000000;
-$paws->{'context'}->{'runner'}->{'rates'} = {
-    'users.list'            => $high,
-    'conversations.list'    => $high,
-    'conversations.replies' => $high,
-    'conversations.history' => $high,
-};
 $paws->receive(1);
 my @files = `find $mail_dir -type f`;
 is(@files, 11, 'Got 11 mails');

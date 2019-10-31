@@ -53,7 +53,7 @@ sub process_tmr
     my $ra = $res->header('Retry-After');
     sleep($ra);
 
-    $self->{'rates'}->{$tag} /= 5;
+    $self->{'rates'}->{$tag} /= ($self->{'backoff'} || 5);
 
     return 1;
 }

@@ -55,6 +55,9 @@ my $config = {
         workspace => 'test',
         path      => $mail_dir,
     } ],
+    rate_limiting => {
+        initial => 1000,
+    },
 };
 
 my $config_path = File::Temp->new();
@@ -71,22 +74,7 @@ $App::Paws::DB_DIR = $db_dir;
 $App::Paws::Context::SLACK_BASE_URL = $url;
 
 my $paws = App::Paws->new();
-my $high = 1000000;
-$paws->{'context'}->{'runner'}->{'rates'} = {
-    'users.list'            => $high,
-    'conversations.list'    => $high,
-    'conversations.replies' => $high,
-    'conversations.history' => $high,
-};
-
-my $runner = App::Paws::Runner->new(
-    rates => {
-        'users.list'            => 200,
-        'conversations.list'    => 200,
-        'conversations.replies' => 500,
-        'conversations.history' => 500,
-    }
-);
+my $runner = $paws->{'context'}->{'runner'};
 
 my $ws = $paws->{'context'}->{'workspaces'}->{'test'};
 my $req = $ws->standard_get_request_only(

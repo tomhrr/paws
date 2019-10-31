@@ -13,6 +13,8 @@ sub new
     my $class = shift;
     my %args = @_;
 
+    my $mul = $args{'config'}->{'rate_limiting'}->{'initial'} || 5;
+
     my $self = {
         config          => $args{'config'},
         queue_directory => $args{'queue_directory'},
@@ -21,11 +23,12 @@ sub new
         ua              => LWP::UserAgent->new(),
         runner          => App::Paws::Runner->new(
 	    rates => {
-		'users.list'            => 100,
-		'conversations.list'    => 100,
-		'conversations.replies' => 250,
-		'conversations.history' => 250,
-	    }
+		'users.list'            => 20 * $mul,
+		'conversations.list'    => 20 * $mul,
+		'conversations.replies' => 50 * $mul,
+		'conversations.history' => 50 * $mul,
+	    },
+            backoff => ($args{'config'}->{'rate_limiting'}->{'backoff'} || 5)
         ),
     };
 
