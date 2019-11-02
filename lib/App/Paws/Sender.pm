@@ -138,7 +138,7 @@ sub _send_queued_single
                             die Dumper($data);
                         } });
         while (not $runner->poke()) {
-            sleep(0.1);
+            sleep(0.01);
         }
 
         if ($name =~ /\+/) {
@@ -172,11 +172,10 @@ sub _send_queued_single
         my ($ws_name) = ($domains[0] =~ /(.*?)\./);
         $ws = $context->{'workspaces'}->{$ws_name};
         $token = $ws->{'token'};
-        my $user_map = $ws->get_user_map();
         my @user_ids;
         for my $user (@parsed) {
             my $username = $user->[0];
-            my $user_id = $user_map->{$username};
+            my $user_id = $ws->name_to_user_id($username);
             if (not $user_id) {
                 $self->_write_bounce($message_id,
                                     "invalid username: '$username'");

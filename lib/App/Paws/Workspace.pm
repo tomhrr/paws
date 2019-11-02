@@ -4,8 +4,9 @@ use warnings;
 use strict;
 
 use Data::Dumper;
+use File::Slurp qw(read_file write_file);
 use HTTP::Request;
-use JSON::XS qw(decode_json);
+use JSON::XS qw(decode_json encode_json);
 use LWP::UserAgent;
 use Time::HiRes qw(sleep);
 
@@ -17,6 +18,7 @@ sub new
     my %args = @_;
     my $self = \%args;
     $self->{'users_loaded'} = 0;
+    $self->{'users_retrieved'} = 0;
     bless $self, $class;
     return $self;
 }
@@ -45,9 +47,25 @@ sub user_id_to_name
 {
     my ($self, $user_id) = @_;
 
-    my $user_map = $self->get_user_map();
+    my $user_map = $self->_get_user_map();
     my %rev = reverse %{$user_map};
+    if (not exists $rev{$user_id} and not $self->{'users_retrieved'}) {
+        $self->_get_users(1);
+        return $self->user_id_to_name($user_id);
+    }
     return $rev{$user_id};
+}
+
+sub name_to_user_id
+{
+    my ($self, $name) = @_;
+
+    my $user_map = $self->_get_user_map();
+    if (not exists $user_map->{$name} and not $self->{'users_retrieved'}) {
+        $self->_get_users(1);
+        return $self->name_to_user_id($name);
+    }
+    return $user_map->{$name};
 }
 
 sub conversation_to_name
@@ -129,7 +147,26 @@ sub get_history_request
 
 sub _init_users
 {
-    my ($self) = @_;
+    my ($self, $force_retrieve) = @_;
+
+    my $db_dir = $self->{'context'}->db_directory();
+    my $path = $db_dir.'/'.$self->{'name'}.'-workspace-db';
+    if (not -e $path) {
+        write_file($path, '{}');
+    }
+    my $db = decode_json(read_file($path));
+
+    if ((not $force_retrieve) and $db->{'users'}) {
+        $self->{'users'} = $db->{'users'};
+        my $extras = $self->{'override_users'} || [];
+        push @{$self->{'users'}}, @{$extras};
+        $self->{'users_loaded'} = 1;
+        $self->{'users_loading'} = 0;
+        return 1;
+    }
+    if ($self->{'users_retrieved'}) {
+        return 1;
+    }
 
     my $context = $self->{'context'};
     my $runner = $context->{'runner'};
@@ -166,8 +203,17 @@ sub _init_users
                 );
                 $runner->add('users.list', $req, $fn);
             } else {
+                $db->{'users'} =
+                    [ map { +{ id => $_->{'id'},
+                             name => $_->{'name'},
+                             real_name => $_->{'real_name'} } }
+                        @{$self->{'users'}} ];
+                my $extras = $self->{'override_users'} || [];
+                push @{$self->{'users'}}, @{$extras};
+                write_file($path, encode_json($db));
                 $self->{'users_loading'} = 0;
                 $self->{'users_loaded'} = 1;
+                $self->{'users_retrieved'} = 1;
             }
         }
     );
@@ -175,26 +221,32 @@ sub _init_users
 
 sub _get_users
 {
-    my ($self) = @_;
-
-    if ($self->{'users_loaded'}) {
-        return $self->{'users'};
-    }
-    if (not $self->{'users_loading'}) {
-        $self->_init_users();
-    }
+    my ($self, $force_retrieve) = @_;
 
     my $context = $self->{'context'};
     my $runner = $context->{'runner'};
 
-    while (not $runner->poke()) {
-        sleep(0.1);
+    if ($force_retrieve and not $self->{'users_retrieved'}) {
+        $self->_init_users($force_retrieve);
+        while (not $runner->poke('users.list')) {
+            sleep(0.01);
+        }
+    }
+    if ($self->{'users_loaded'}) {
+        return $self->{'users'};
+    }
+    if (not $self->{'users_loading'}) {
+        $self->_init_users($force_retrieve);
+    }
+
+    while (not $runner->poke('users.list')) {
+        sleep(0.01);
     }
 
     return $self->{'users'};
 }
 
-sub get_user_map
+sub _get_user_map
 {
     my ($self) = @_;
 
@@ -226,6 +278,14 @@ sub get_user_list
     $self->{'user_list'} = \@user_list;
 
     return \@user_list;
+}
+
+sub retrieve_users
+{
+    my ($self) = @_;
+
+    $self->_get_users(1);
+    return 1;
 }
 
 1;

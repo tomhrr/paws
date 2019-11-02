@@ -138,7 +138,7 @@ sub _add_attachment
                  sub { my ($runner, $internal_res) = @_;
                        $res = $internal_res; });
     while (not $res) {
-        $runner->poke();
+        $runner->poke('conversations.replies');
     }
     $entity->attach(Type     => $file->{'mimetype'},
                     Data     => $res->content(),
@@ -643,7 +643,7 @@ sub _run_internal
     if ($has_cached) {
         $used_cached = 1;
     } else {
-        while (not $runner->poke()) {
+        while (not $runner->poke('conversations.list')) {
             sleep(0.01);
         }
     }

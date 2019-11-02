@@ -45,6 +45,13 @@ workspaces:
     # considered 'expired', and will no longer be checked for new
     # messages (defaults to 7 days).
     thread_expiry: 3600
+    # Additional user entries.  For adding user entries for users that
+    # no longer exist in Slack: adding that data here will save
+    # unnecessary calls to the API.
+    override_users:
+      - id: U12345678
+        name: john
+        real_name: John Smith
 # Receiver configuration.
 receivers:
     # The type of the receiver.
