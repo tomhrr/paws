@@ -158,8 +158,6 @@ sub _init_users
 
     if ((not $force_retrieve) and $db->{'users'}) {
         $self->{'users'} = $db->{'users'};
-        my $extras = $self->{'override_users'} || [];
-        push @{$self->{'users'}}, @{$extras};
         $self->{'users_loaded'} = 1;
         $self->{'users_loading'} = 0;
         return 1;
@@ -189,9 +187,7 @@ sub _init_users
             if ($data->{'error'}) {
                 die Dumper($data);
             }
-            my @users =
-                grep { not $_->{'deleted'} }
-                    @{$data->{'members'}};
+            my @users = @{$data->{'members'}};
             push @{$self->{'users'}}, @users;
 
             if ($data->{'response_metadata'}->{'next_cursor'}) {
@@ -204,12 +200,11 @@ sub _init_users
                 $runner->add('users.list', $req, $fn);
             } else {
                 $db->{'users'} =
-                    [ map { +{ id => $_->{'id'},
-                             name => $_->{'name'},
-                             real_name => $_->{'real_name'} } }
+                    [ map { +{ id        => $_->{'id'},
+                               name      => $_->{'name'},
+                               real_name => $_->{'real_name'},
+                               deleted   => $_->{'deleted'} } }
                         @{$self->{'users'}} ];
-                my $extras = $self->{'override_users'} || [];
-                push @{$self->{'users'}}, @{$extras};
                 write_file($path, encode_json($db));
                 $self->{'users_loading'} = 0;
                 $self->{'users_loaded'} = 1;

@@ -283,6 +283,12 @@ sub _send_queued_single
             return 1;
         }
     }
+    my $data = decode_json($res->decoded_content());
+    if (not $data->{'ok'}) {
+        $self->_write_bounce($message_id,
+                             $res->decoded_content());
+        return 1;
+    }
 
     for my $r (@sreqs) {
         my $res = $ua->request($r);
@@ -291,6 +297,12 @@ sub _send_queued_single
                  $res->status_line();
             $self->_write_bounce($message_id,
                                  $res->status_line());
+            return 1;
+        }
+        my $data = decode_json($res->decoded_content());
+        if (not $data->{'ok'}) {
+            $self->_write_bounce($message_id,
+                                 $res->decoded_content());
             return 1;
         }
     }

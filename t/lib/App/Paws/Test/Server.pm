@@ -379,6 +379,9 @@ sub _handle_request
     }
 
     if ($res->code()) {
+        if (not $res->content()) {
+            $res->content('{"ok":true}');
+        }
         $c->send_response($res);
     } else {
         $res->code(404);
