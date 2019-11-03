@@ -82,38 +82,6 @@ sub _message_to_id
     return "<$local_part\@$ws_name.$domain_name>";
 }
 
-sub _parse_message_id
-{
-    my ($self, $message_id) = @_;
-
-    $message_id =~ s/^<//;
-    $message_id =~ s/\@.*>$//;
-    my @local_parts = split /\./, $message_id;
-    my $deleted = 0;
-    if ($local_parts[$#local_parts] eq 'deleted') {
-        pop @local_parts;
-        $deleted = 1;
-    }
-    my %data;
-    if (@local_parts == 3) {
-        %data = (
-            ts           => $local_parts[0].'.'.$local_parts[1],
-            conversation => $local_parts[2],
-            deleted      => $deleted,
-        );
-    } elsif (@local_parts == 5) {
-        %data = (
-            edited_ts    => $local_parts[0].'.'.$local_parts[1],
-            ts           => $local_parts[2].'.'.$local_parts[3],
-            conversation => $local_parts[4],
-            deleted      => $deleted,
-        );
-    } else {
-        die "Unexpected local part count: ".(scalar @local_parts);
-    }
-    return \%data;
-}
-
 sub _add_attachment
 {
     my ($self, $entity, $file) = @_;
