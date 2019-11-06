@@ -10,7 +10,7 @@ use File::Temp qw(tempdir);
 use HTML::Entities qw(decode_entities);
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
-use List::Util qw(uniq min minstr first);
+use List::Util qw(min minstr first);
 use MIME::Entity;
 use POSIX qw(strftime);
 use Sys::Hostname;
