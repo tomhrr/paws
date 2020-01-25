@@ -29,21 +29,6 @@ for my $dir (qw(cur new tmp)) {
     system("mkdir $bounce_dir/$dir");
 }
 
-my $ft = File::Temp->new();
-print $ft <<EOF;
-MAILDIR=$mail_dir
-LOGFILE=/tmp/asdf
-VERBOSE=1
-
-:0:
-$mail_dir/
-EOF
-$ft->flush();
-my $procmail_config_fn = $ft->filename();
-
-my ($procmail) = `which procmail`;
-chomp $procmail;
-
 my $config = {
     domain_name => 'slack.alt',
     user_email => 'test@example.com',
@@ -66,8 +51,8 @@ my $config = {
         type      => 'MDA',
         name      => 'initial',
         workspace => 'test',
-        path      => $procmail,
-        args      => [$procmail_config_fn],
+        path      => 't/bin/mda',
+        args      => [$mail_dir],
     } ],
     rate_limiting => {
         initial => 1000,

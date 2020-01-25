@@ -1,0 +1,13 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+my ($mail_dir) = @ARGV;
+my $content = join '', <>;
+my $fn = $$.'-'.(int(rand(100000)));
+open my $fh, '>', $mail_dir.'/'.$fn or die $!;
+print $fh $content;
+close $fh;
+
+1;
