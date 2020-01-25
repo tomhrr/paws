@@ -93,7 +93,7 @@ If you're not sure how to do something in Slack, *just type your question below*
 Or press these buttons to learn about the following topics:);
 $mail2->flush();
 $mail2->seek(0, SEEK_SET);
-$paws->send(['example.org'], $mail2);
+$paws->send([], $mail2);
 $paws->send_queued();
 
 $paws->receive(10);

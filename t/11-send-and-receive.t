@@ -94,7 +94,7 @@ Or press these buttons to learn about the following topics:);
 $mail->flush();
 $mail->seek(0, SEEK_SET);
 
-$paws->send(['slack.alt'], $mail);
+$paws->send([], $mail);
 $paws->send_queued();
 $paws->receive(20);
 @files = `find $mail_dir -type f`;

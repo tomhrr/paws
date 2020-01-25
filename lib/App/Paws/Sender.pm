@@ -318,10 +318,18 @@ sub submit
     my $domain_name = $context->domain_name();
     my @lines = <$fh>;
 
-    if (not first { /$domain_name$/ } @{$args}) {
-        my $ft = File::Temp->new(UNLINK => 0);
-        print $ft @lines;
-        $ft->flush();
+    my $ft = File::Temp->new(UNLINK => 0);
+    print $ft @lines;
+    $ft->flush();
+    $ft->seek(0, 0);
+
+    my $parser = MIME::Parser->new();
+    my $parser_dir = tempdir();
+    $parser->output_under($parser_dir);
+    my $entity = $parser->parse($ft);
+
+    my $to = $entity->head()->get('To');
+    if ($to !~ /$domain_name/) {
         my $fallback_sendmail = $self->{'fallback_sendmail'};
         my $res = system("$fallback_sendmail ".
                          (join ' ', @{$args})." < ".$ft->filename());

@@ -108,7 +108,7 @@ asdfasdf
 $mail3->flush();
 $mail3->seek(0, SEEK_SET);
 
-$paws->send(['slack.alt'], $mail3);
+$paws->send([], $mail3);
 $paws->send_queued();
 
 $paws->receive(40);

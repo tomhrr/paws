@@ -99,7 +99,7 @@ $text);
 };
 
 my $mail1 = $make_msg->(time().'.01', 'Internal response');
-$paws->send(['slack.alt'], $mail1);
+$paws->send([], $mail1);
 
 my $cap = IO::Capture::Stderr->new();
 $cap->start();
@@ -134,7 +134,7 @@ is(@files, 11, 'Still unable to send mail');
 is(@bounces, 1, 'Got bounce after five attempts');
 
 my $mail2 = $make_msg->(time().'.02', 'Status: 404');
-$paws->send(['slack.alt'], $mail2);
+$paws->send([], $mail2);
 
 $cap->start();
 $paws->send_queued();
@@ -176,7 +176,7 @@ Status: 404
 $mail3->flush();
 $mail3->seek(0, SEEK_SET);
 
-$paws->send(['slack.alt'], $mail3);
+$paws->send([], $mail3);
 
 $cap->start();
 $paws->send_queued();

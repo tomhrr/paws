@@ -94,7 +94,7 @@ Or press these buttons to learn about the following topics:);
 $mail4->flush();
 $mail4->seek(0, SEEK_SET);
 
-$paws->send(['slack.alt'], $mail4);
+$paws->send([], $mail4);
 $paws->send_queued();
 
 $paws->receive(50);
