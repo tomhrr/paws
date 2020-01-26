@@ -11,52 +11,41 @@ my $false = bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' );
 
 my $counter = 0;
 
-my @channels = ({
+my %channel_template = (
     'is_im' => $false,
-    'is_channel' => $true,
+    'is_channel' => $false,
     'is_private' => $false,
     'pending_connected_team_ids' => [],
     'num_members' => 97,
-    'name' => 'general',
     'is_shared' => $false,
     'is_pending_ext_shared' => $false,
     'is_org_shared' => $false,
-    'id' => 'C00000001',
     'name_normalized' => 'general',
     'creator' => 'U00000001',
     'is_group' => $false,
     'parent_conversation' => undef,
     'is_archived' => $false,
     'is_mpim' => $false,
-    'created' => 1458566704,
     'is_ext_shared' => $false,
     'pending_shared' => [],
     'is_general' => $true,
     'unlinked' => 0,
     'is_member' => $true
-}, {
-    'is_im' => $false,
+);
+
+my $channel_id = 1;
+my @channels = ({
+    %channel_template,
     'is_channel' => $true,
-    'is_private' => $false,
-    'pending_connected_team_ids' => [],
-    'num_members' => 297,
-    'name' => 'work',
-    'is_shared' => $false,
-    'is_pending_ext_shared' => $false,
-    'is_org_shared' => $false,
-    'id' => 'C00000002',
-    'name_normalized' => 'work',
-    'creator' => 'U00000002',
-    'is_group' => $false,
-    'parent_conversation' => undef,
-    'is_archived' => $false,
-    'is_mpim' => $false,
+    'name' => 'general',
+    'id' => 'C0000000'.$channel_id++,
     'created' => 1458566704,
-    'is_ext_shared' => $false,
-    'pending_shared' => [],
-    'is_general' => $true,
-    'unlinked' => 0,
-    'is_member' => $true
+}, {
+    %channel_template,
+    'is_channel' => $true,
+    'name' => 'work',
+    'id' => 'C0000000'.$channel_id++,
+    'created' => 1458566704,
 });
 
 my @ims = ({
@@ -298,6 +287,25 @@ sub _handle_request
                     };
                 $res->code(200);
             }
+        } elsif ($path eq '/conversations.open') {
+            my $data = decode_json($r->content());
+            my @user_ids = split /,/, $data->{'users'};
+
+            my $id = 'C0000000'.$channel_id++;
+            push @channels, {
+                %channel_template,
+                'is_channel' => $true,
+                'name' => $data->{'users'},
+                'id' => $id,
+                'created' => time(),
+            };
+            $channel_id_to_history{$id} = [];
+            my $response_data = {
+                ok => $true,
+                channel => { id => $id }
+            };
+            $res->content(encode_json($response_data));
+            $res->code(200);
         } elsif ($path eq '/chat.update') {
             my $data = decode_json($r->content());
             my $channel_id = $data->{'channel'};
