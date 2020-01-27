@@ -116,12 +116,26 @@ sub _send_queued_single
     my $token;
     my $ws;
     my $thread_ts;
+    my $base = $context->domain_name();
 
     my $conversation_id;
     if ($to !~ /,/) {
         my ($local, $domain) = split /@/, $to;
         my ($type, $name) = split /\s*\/\s*/, $local;
-        my ($ws_name) = ($domain =~ /(.*?)\./);
+
+        if ($domain !~ /^(.*)\.$base$/) {
+            $self->_write_bounce($message_id,
+                                    "message has non-Slack recipient: ".
+                                    $to);
+            return 1;
+        }
+        my $ws_name = $1;
+        if (not $context->{'workspaces'}->{$ws_name}) {
+            $self->_write_bounce($message_id,
+                                    "workspace '$ws_name' does ".
+                                    "not exist");
+            return 1;
+        }
 
         $ws = $context->{'workspaces'}->{$ws_name};
         my $req = $ws->get_conversations_request();
@@ -158,23 +172,38 @@ sub _send_queued_single
     }
     if (not $conversation_id) {
         my @recipients = ((split /\s*,\s*/, $to), (split /\s*,\s*/, $cc));
-        my @parsed =
-            map { my ($username, $domain) = split /@/, $_;
-                  [ $username, $domain ] }
-                @recipients;
-        my @domains = uniq map { $_->[1] } @parsed;
-        if (@domains > 1) {
+        my @usernames;
+        my @ws_names;
+        for my $recipient (@recipients) {
+            my ($username, $domain) = split /@/, $recipient;
+            if ($domain !~ /^(.*)\.$base$/) {
+                $self->_write_bounce($message_id,
+                                     "message has non-Slack recipient: ".
+                                     $recipient);
+                return 1;
+            }
+            my $ws_name = $1;
+            if (not $context->{'workspaces'}->{$ws_name}) {
+                $self->_write_bounce($message_id,
+                                     "workspace '$ws_name' does ".
+                                     "not exist");
+                return 1;
+            }
+            push @usernames, $username;
+            push @ws_names, $ws_name;
+        }
+        @ws_names = uniq @ws_names;
+        if (@ws_names > 1) {
             $self->_write_bounce($message_id,
                                 "unable to send message to multiple ".
                                 "workspaces");
             return 1;
         }
-        my ($ws_name) = ($domains[0] =~ /(.*?)\./);
+        my $ws_name = $ws_names[0];
         $ws = $context->{'workspaces'}->{$ws_name};
         $token = $ws->{'token'};
         my @user_ids;
-        for my $user (@parsed) {
-            my $username = $user->[0];
+        for my $username (@usernames) {
             my $user_id = $ws->name_to_user_id($username);
             if (not $user_id) {
                 $self->_write_bounce($message_id,
