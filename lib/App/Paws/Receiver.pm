@@ -589,7 +589,7 @@ sub _run_internal
     my $runner = $self->{'context'}->runner();
     $runner->add('conversations.list',
                  $req, sub {
-                    my ($self, $res) = @_;
+                    my ($self, $res, $fn) = @_;
                     if (not $res->is_success()) {
                         die Dumper($res);
                     }
@@ -604,9 +604,20 @@ sub _run_internal
                         map { $ws->conversation_to_name($_) => $_->{'id'} }
                             @conversations;
                     $db->{'conversation-map'} =
-                        \%conversation_map;
+                        { %{$db->{'conversation-map'} || {}},
+                          %conversation_map };
                     $conversation_map =
                         \%conversation_map;
+
+		    if ($data->{'response_metadata'}->{'next_cursor'}) {
+			my $req = $ws->standard_get_request_only(
+			    '/conversations.list',
+			    { cursor => $data->{'response_metadata'}
+					    ->{'next_cursor'},
+                              types => 'public_channel,private_channel,mpim,im' }
+			);
+			$runner->add('conversations.list', $req, $fn);
+                    }
                  });
     my $used_cached = 0;
     if ($has_cached) {
