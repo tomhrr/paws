@@ -85,6 +85,15 @@ new messages from Slack into the configured maildirs.
 `paws-send-queued' should also be run periodically, in order to resend
 messages that have been queued due to temporary problems.
 
+If `paws-receive` is run without arguments, then it will fetch new
+messages from Slack for each workspace, one-by-one (i.e. each
+workspace will be processed in its entirety before moving on to the
+next one).  If multiple workspaces are configured, this process can be
+made more efficient by having separate `paws-receive` calls for each
+workspace (see the `--name` parameter).  Since the Slack API's rate
+limits are per-workspace, parallelising the process in this way does
+not increase the chance of running into a rate-limiting problem.
+
 ### Receivers
 
 #### maildir
