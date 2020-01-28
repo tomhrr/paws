@@ -82,6 +82,8 @@ Then, configure your MUA to use `paws-send` as its sendmail command
 for sending mail (mail that is not for Slack will be passed off to the
 `fallback_sendmail` command).  After that, run `paws-receive` to pull
 new messages from Slack into the configured maildirs.
+`paws-send-queued' should also be run periodically, in order to resend
+messages that have been queued due to temporary problems.
 
 ### Receivers
 
