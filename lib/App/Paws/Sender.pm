@@ -141,31 +141,31 @@ sub _send_queued_single
         my $req = $ws->get_conversations_request();
         my $data;
         my $runner = $self->{'context'}->runner();
-	$runner->add('conversations.list',
-		    $req, sub {
-			my ($self, $res, $fn) = @_;
-			if (not $res->is_success()) {
-			    die Dumper($res);
-			}
+        $runner->add('conversations.list',
+                    $req, sub {
+                        my ($self, $res, $fn) = @_;
+                        if (not $res->is_success()) {
+                            die Dumper($res);
+                        }
                         my $tdata = decode_json($res->content());
-			if ($tdata->{'error'}) {
-			    die Dumper($tdata);
-			}
+                        if ($tdata->{'error'}) {
+                            die Dumper($tdata);
+                        }
                         if (not $data) {
                             $data->{'channels'} = $tdata->{'channels'};
                         } else {
                             push @{$data->{'channels'}}, @{$tdata->{'channels'}};
                         }
-			if ($tdata->{'response_metadata'}->{'next_cursor'}) {
-			    my $req = $ws->standard_get_request_only(
-				'/conversations.list',
-				{ cursor => $tdata->{'response_metadata'}
-						->{'next_cursor'},
-				types => 'public_channel,private_channel,mpim,im' }
-			    );
-			    $runner->add('conversations.list', $req, $fn);
-			}
-		    });
+                        if ($tdata->{'response_metadata'}->{'next_cursor'}) {
+                            my $req = $ws->standard_get_request_only(
+                                '/conversations.list',
+                                { cursor => $tdata->{'response_metadata'}
+                                                ->{'next_cursor'},
+                                types => 'public_channel,private_channel,mpim,im' }
+                            );
+                            $runner->add('conversations.list', $req, $fn);
+                        }
+                    });
         while (not $runner->poke()) {
             sleep(0.01);
         }
