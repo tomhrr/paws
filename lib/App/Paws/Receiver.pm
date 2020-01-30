@@ -280,6 +280,14 @@ sub _receive_conversation
                     if ($data->{'error'}) {
                         die Dumper($data);
                     }
+                    for my $message (@{$data->{'messages'} || []}) {
+                        if ($message->{'thread_ts'}) {
+                            if (not grep { $_ eq $message->{'thread_ts'} }
+                                    @{$thread_tss}) {
+                                push @{$thread_tss}, $message->{'thread_ts'};
+                            }
+                        }
+                    }
                     my %seen_messages;
                     for my $message (@{$data->{'messages'} || []}) {
                         $seen_messages{$message->{'ts'}} = 1;
