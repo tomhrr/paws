@@ -383,6 +383,28 @@ sub _handle_request
 
                 $res->code(200);
             }
+        } elsif ($path eq '/paws.thread.make') {
+            my $data = decode_json($r->content());
+            my $channel_id = $data->{'channel'};
+            my $ts = $data->{'ts'};
+            my $ref = $channel_id_to_history{$channel_id};
+            my $thread_ts = time().'.'.sprintf("%06d", $counter++);
+            my $thread_msg_ts = time().'.'.sprintf("%06d", $counter++);
+            for my $msg (@{$ref}) {
+                if ($msg->{'ts'} eq $ts) {
+                    $msg->{'thread_ts'} = $thread_ts;
+                    $thread_to_history{$channel_id}->{$thread_ts} = [
+                        {
+                            ts   => $thread_msg_ts,
+                            text => 'thread starts here',
+                            user => 'U00000001',
+                            type => 'message'
+                        }
+                    ];
+                    last;
+                }
+            }
+            $res->code(200);
         }
     }
 
