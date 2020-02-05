@@ -5,21 +5,48 @@ use strict;
 
 use App::Paws;
 use Getopt::Long;
+use Time::Local;
 
-my $name;
-my $res = GetOptions("name=s", \$name);
-if (not $res) {
+sub usage
+{
     print <<EOF;
 $0 - receive messages from Slack
 
 Options:
 
-    --name={name}   Receive messages for the named receiver only.
+    --name={name}         Receive messages for the named receiver only.
+    --since={YYYY-MM-DD}  Only receive messages that were originally
+                          sent on this date or later.
+
+--since effectively sets the 'last received timestamp' for a
+conversation to the given date (except when the date precedes that
+timestamp).  This means that subsequent receive calls made after using
+--since will not attempt to fill in any gaps in the history that occur
+as a result of having used it.
 EOF
     exit(10);
 }
 
+my $name;
+my $since;
+my $res = GetOptions("name=s"  => \$name,
+                     "since=s" => \$since);
+if (not $res) {
+    usage();
+}
+
+my $since_ts;
+if ($since) {
+    my ($y, $m, $d) = split /-/, $since;
+    $since_ts = eval { timelocal(0, 0, 0, $d, ($m - 1), ($y - 1900)); };
+    if (my $error = $@) {
+        print STDERR "Invalid --since date.\n";
+        warn $error;
+        usage();
+    }
+}
+
 my $paws = App::Paws->new();
-$paws->receive(1, ($name ? ($name) : ()));
+$paws->receive(1, map { $_ ? $_ : undef } ($name, $since_ts));
 
 1;

@@ -81,9 +81,9 @@ rate_limiting:
 Then, configure your MUA to use `paws-send` as its sendmail command
 for sending mail (mail that is not for Slack will be passed off to the
 `fallback_sendmail` command).  After that, run `paws-receive` to pull
-new messages from Slack into the configured maildirs.
-`paws-send-queued' should also be run periodically, in order to resend
-messages that have been queued due to temporary problems.
+messages from Slack into the configured maildirs.  `paws-send-queued'
+should also be run periodically, in order to resend messages that have
+been queued due to temporary problems.
 
 If `paws-receive` is run without arguments, then it will fetch new
 messages from Slack for each workspace, one-by-one (i.e. each
@@ -93,6 +93,12 @@ made more efficient by having separate `paws-receive` calls for each
 workspace (see the `--name` parameter).  Since the Slack API's rate
 limits are per-workspace, parallelising the process in this way does
 not increase the chance of running into a rate-limiting problem.
+
+On first running `paws-receive`, it will pull all available messages,
+which may take a long time.  If you don't need all of the messages,
+then you can use the `--since` flag to only pull messages that were
+originally sent on the given date or later (e.g. `paws-receive
+--since=2020-01-01`).
 
 ### Receivers
 

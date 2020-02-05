@@ -278,6 +278,9 @@ sub _handle_request
                     ($thread_ts)
                         ? $thread_to_history{$channel_id}->{$thread_ts}
                         : $channel_id_to_history{$channel_id};
+                if (not $ref) {
+                    die "Unable to post message";
+                }
                 push @{$ref},
                     { 
                         ts => time().'.'.sprintf("%06d", $counter++),
@@ -390,6 +393,7 @@ sub _handle_request
             my $ref = $channel_id_to_history{$channel_id};
             my $thread_ts = time().'.'.sprintf("%06d", $counter++);
             my $thread_msg_ts = time().'.'.sprintf("%06d", $counter++);
+            my $found = 0;
             for my $msg (@{$ref}) {
                 if ($msg->{'ts'} eq $ts) {
                     $msg->{'thread_ts'} = $thread_ts;
@@ -401,10 +405,15 @@ sub _handle_request
                             type => 'message'
                         }
                     ];
+                    $found = 1;
                     last;
                 }
             }
-            $res->code(200);
+            if ($found) {
+                $res->code(200);
+            } else {
+                $res->code(404);
+            }
         }
     }
 

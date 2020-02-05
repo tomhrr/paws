@@ -68,7 +68,7 @@ sub send_queued
 
 sub receive
 {
-    my ($self, $counter, $name) = @_;
+    my ($self, $counter, $name, $since_ts) = @_;
 
     my $context = $self->{'context'};
     my $receiver_specs = $context->{'config'}->{'receivers'};
@@ -89,7 +89,7 @@ sub receive
             context => $context,
             %{$receiver_spec}
         );
-        $receiver->run($counter);
+        $receiver->run($counter, $since_ts);
     }
     return 1;
 }

@@ -30,7 +30,7 @@ sub new
 
 sub run
 {
-    my ($self, $counter) = @_;
+    my ($self, $counter, $since_ts) = @_;
 
     $counter ||= 1;
 
@@ -68,7 +68,7 @@ sub run
         }
     );
 
-    $receiver->run();
+    $receiver->run($since_ts);
     return 1;
 }
 

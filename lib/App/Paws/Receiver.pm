@@ -236,7 +236,8 @@ sub _write_delete_message
 
 sub _receive_conversation
 {
-    my ($self, $db_conversation, $conversation_map, $conversation) = @_;
+    my ($self, $db_conversation, $conversation_map, $conversation,
+        $since_ts) = @_;
 
     my $context = $self->{'context'};
     my $ws = $self->{'workspace'};
@@ -245,7 +246,12 @@ sub _receive_conversation
 
     my $thread_tss = $db_conversation->{'thread_tss'} || [];
     $db_conversation->{'thread_tss'} = $thread_tss;
+
     my $stored_last_ts = $db_conversation->{'last_ts'} || 1;
+    if ($since_ts and ($stored_last_ts < $since_ts)) {
+        $stored_last_ts = $since_ts;
+        $db_conversation->{'last_ts'} = $stored_last_ts;
+    }
     my $new_last_ts = $stored_last_ts;
     my $conversation_id = $conversation_map->{$conversation};
     if (not $conversation_id) {
@@ -402,7 +408,8 @@ sub _receive_conversation
 
 sub _receive_conversation_threads
 {
-    my ($self, $db_conversation, $conversation_map, $conversation) = @_;
+    my ($self, $db_conversation, $conversation_map, $conversation,
+        $since_ts) = @_;
 
     my $context = $self->{'context'};
     my $ws = $self->{'workspace'};
@@ -411,6 +418,10 @@ sub _receive_conversation_threads
 
     my @thread_tss = @{$db_conversation->{'thread_tss'} || []};
     my $stored_last_ts = $db_conversation->{'last_ts'} || 1;
+    if ($since_ts and ($stored_last_ts < $since_ts)) {
+        $stored_last_ts = $since_ts;
+        $db_conversation->{'last_ts'} = $stored_last_ts;
+    }
     my $new_last_ts = $stored_last_ts;
     my $conversation_id = $conversation_map->{$conversation};
     if (not $conversation_id) {
@@ -427,6 +438,10 @@ sub _receive_conversation_threads
         eval {
             for my $thread_ts (@thread_tss) {
                 my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+                if ($since_ts and ($last_ts < $since_ts)) {
+                    $last_ts = $since_ts;
+                    $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
+                }
                 if (($last_ts != 1)
                         and ($last_ts < (time() - $ws->thread_expiry()))) {
                     next;
@@ -517,6 +532,10 @@ sub _receive_conversation_threads
 
     for my $thread_ts (@thread_tss) {
         my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+        if ($since_ts and ($last_ts < $since_ts)) {
+            $last_ts = $since_ts;
+            $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
+        }
         if (($last_ts != 1)
                 and ($last_ts < (time() - $ws->thread_expiry()))) {
             next;
@@ -575,7 +594,7 @@ sub _receive_conversation_threads
 
 sub _run_internal
 {
-    my ($self) = @_;
+    my ($self, $since_ts) = @_;
 
     my $ws = $self->{'workspace'};
     my $context = $self->{'context'};
@@ -661,7 +680,8 @@ sub _run_internal
         $db->{$ws_name}->{$conversation} = $db_conversation;
         $self->_receive_conversation($db_conversation,
                                         $conversation_map,
-                                        $conversation);
+                                        $conversation,
+                                        $since_ts);
     }
     while (not $runner->poke()) {
         sleep(0.01);
@@ -678,7 +698,8 @@ sub _run_internal
             $db->{$ws_name}->{$conversation} = $db_conversation;
             $self->_receive_conversation($db_conversation,
                                             $conversation_map,
-                                            $conversation);
+                                            $conversation,
+                                            $since_ts);
         }
         while (not $runner->poke()) {
             sleep(0.01);
@@ -691,7 +712,8 @@ sub _run_internal
         $db->{$ws_name}->{$conversation} = $db_conversation;
         $self->_receive_conversation_threads($db_conversation,
                                              $conversation_map,
-                                             $conversation);
+                                             $conversation,
+                                             $since_ts);
     }
     while (not $runner->poke()) {
         sleep(0.01);
@@ -702,10 +724,10 @@ sub _run_internal
 
 sub run
 {
-    my ($self) = @_;
+    my ($self, $since_ts) = @_;
 
     $self->_lock();
-    eval { $self->_run_internal(); };
+    eval { $self->_run_internal($since_ts); };
     my $error = $@;
     $self->_unlock();
     if ($error) {
