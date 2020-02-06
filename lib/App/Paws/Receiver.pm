@@ -21,6 +21,8 @@ use POSIX qw(strftime);
 use Sys::Hostname;
 use Time::HiRes qw(sleep);
 
+use App::Paws::Lock;
+
 sub new
 {
     my $class = shift;
@@ -28,38 +30,6 @@ sub new
     my $self = \%args;
     bless $self, $class;
     return $self;
-}
-
-sub _lock
-{
-    my ($self) = @_;
-
-    my $db_dir = $self->{'context'}->db_directory();
-    my $lock = $db_dir.'/'.$self->{'name'}.'-lock';
-    my $fh;
-    my $count = 10;
-    for (;;) {
-        my $res = sysopen $fh, $lock, O_CREAT | O_EXCL;
-        if ($fh) {
-            last;
-        }
-        $count--;
-        sleep(1);
-    }
-    if (not $fh) {
-        die "Unable to secure lock $lock after 10 seconds.";
-    }
-
-    return 1;
-}
-
-sub _unlock
-{
-    my ($self) = @_;
-
-    my $db_dir = $self->{'context'}->db_directory();
-    my $lock = $db_dir.'/'.$self->{'name'}.'-lock';
-    unlink $lock;
 }
 
 sub _get_mail_date
@@ -726,10 +696,12 @@ sub run
 {
     my ($self, $since_ts) = @_;
 
-    $self->_lock();
+    my $db_dir = $self->{'context'}->db_directory();
+    my $lock_path = $db_dir.'/'.$self->{'name'}.'-lock';
+    my $lock = App::Paws::Lock->new($lock_path);
     eval { $self->_run_internal($since_ts); };
     my $error = $@;
-    $self->_unlock();
+    $lock->unlock();
     if ($error) {
         die $error;
     }

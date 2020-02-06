@@ -20,6 +20,8 @@ use POSIX qw(strftime);
 use Sys::Hostname;
 use URI;
 
+use App::Paws::Lock;
+
 my $MAX_FAILURE_COUNT = 5;
 
 sub new
@@ -60,38 +62,6 @@ EOF
     rename($bounce_dir.'/tmp/'.$fn, $bounce_dir.'/new/'.$fn);
 
     return 1;
-}
-
-sub _lock_queue
-{
-    my ($self) = @_;
-
-    my $queue_dir = $self->{'context'}->queue_directory();
-    my $queue_lock = $queue_dir.'/lock';
-    my $fh;
-    my $count = 10;
-    for (;;) {
-        my $res = sysopen $fh, $queue_lock, O_CREAT | O_EXCL;
-        if ($fh) {
-            last;
-        }
-        $count--;
-        sleep(1);
-    }
-    if (not $fh) {
-        die "Unable to secure lock $queue_lock after 10 seconds.";
-    }
-
-    return 1;
-}
-
-sub _unlock_queue
-{
-    my ($self) = @_;
-
-    my $queue_dir = $self->{'context'}->queue_directory();
-    my $queue_lock = $queue_dir.'/lock';
-    unlink $queue_lock;
 }
 
 sub _send_queued_single
@@ -395,8 +365,9 @@ sub send_queued
     my $domain_name = $context->domain_name();
     my $to = $context->user_email();
 
-    $self->_lock_queue();
     my $queue_dir = $context->queue_directory();
+    my $queue_lock = $queue_dir.'/lock';
+    my $lock = App::Paws::Lock->new($queue_lock);
 
     my $path = $context->db_directory().'/sender';
     if (not -e $path) {
@@ -442,7 +413,7 @@ sub send_queued
     };
 
     my $error = $@;
-    $self->_unlock_queue();
+    $lock->unlock();
     if ($error) {
         die $error;
     }
