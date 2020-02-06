@@ -434,6 +434,7 @@ sub _receive_conversation_threads
                             my $entity = $sub_message->to_entity(
                                 $first_ts, $thread_ts
                             );
+                            $self->{'write_callback'}->($entity);
                             $deliveries->{$sub_message->ts()} = 1;
                             if ($sub_message->ts() >= $last_ts) {
                                 $last_ts = $sub_message->ts();
