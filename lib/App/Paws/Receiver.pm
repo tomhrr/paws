@@ -22,6 +22,7 @@ use Sys::Hostname;
 use Time::HiRes qw(sleep);
 
 use App::Paws::Lock;
+use App::Paws::Message;
 
 sub new
 {
@@ -51,125 +52,6 @@ sub _message_to_id
         $local_part = $message->{'edited'}->{'ts'}.'.'.$local_part;
     }
     return "<$local_part\@$ws_name.$domain_name>";
-}
-
-sub _add_attachment
-{
-    my ($self, $entity, $file) = @_;
-
-    my $context = $self->{'context'};
-    my $token = $self->{'workspace'}->token();
-
-    my $req = HTTP::Request->new();
-    $req->header('Content-Type' => 'application/x-www-form-urlencoded');
-    $req->header('Authorization' => 'Bearer '.$token);
-    my $url_private = $file->{'url_private'};
-    if ($url_private =~ /^\//) {
-        $url_private = $context->slack_base_url().$url_private;
-    }
-    $req->uri($url_private);
-    $req->method('GET');
-    my $filename = $file->{'url_private'};
-    $filename =~ s/.*\///;
-    my $res;
-    my $runner = $context->{'runner'};
-    $runner->add('conversations.replies', $req,
-                 sub { my ($runner, $internal_res) = @_;
-                       $res = $internal_res; });
-    while (not $res) {
-        $runner->poke('conversations.replies');
-    }
-    $entity->attach(Type     => $file->{'mimetype'},
-                    Data     => $res->content(),
-                    Filename => $filename);
-}
-
-sub _substitute_user_mentions
-{
-    my ($self, $content) = @_;
-
-    my $ws = $self->{'workspace'};
-    my @ats = ($content =~ /<\@(U.*?)>/g);
-    my %at_map = map { $_ => $ws->user_id_to_name($_) } @ats;
-    for my $at (keys %at_map) {
-        if (my $name = $at_map{$at}) {
-            $content =~ s/<\@$at>/<\@$name>/g;
-        }
-    }
-
-    return $content;
-}
-
-sub _write_message
-{
-    my ($self, $conversation, $message, $first_ts, $thread_ts,
-        $reply_to_id) = @_;
-
-    my $context = $self->{'context'};
-    my $ws = $self->{'workspace'};
-    my $ws_name = $ws->name();
-
-    my $token = $ws->token();
-    my $reply_to_thread = ($thread_ts ne $first_ts);
-
-    my $ts = $message->{'ts'};
-    $ts =~ s/\..*//;
-
-    my $from_user = 'unknown';
-    if ($message->{'user'}) {
-        my $name = $ws->user_id_to_name($message->{'user'});
-        if ($name) {
-            $from_user = $name;
-        }
-    }
-
-    my $content = $self->_substitute_user_mentions($message->{'text'});
-
-    my $domain_name = $context->domain_name();
-    my $ws_domain_name = "$ws_name.$domain_name";
-    my $message_id = $self->_message_to_id($conversation, $message);
-
-    my $entity = MIME::Entity->build(
-        Date         => _get_mail_date($ts),
-        From         => "$from_user\@$ws_domain_name",
-        To           => $context->user_email(),
-        Subject      => "Message from $conversation".
-                        ($message->{'edited'} ? ' (edited)' : ''),
-        'Message-ID' => $message_id,
-        Charset      => 'UTF-8',
-        Encoding     => 'base64',
-        Data         => Encode::encode('UTF-8', decode_entities($content),
-                                       Encode::FB_CROAK)
-    );
-
-    for my $file (@{$message->{'files'} || []}) {
-        $self->_add_attachment($entity, $file);
-    }
-
-    my $parent_id =
-        $self->_message_to_id($conversation, { ts => $thread_ts });
-    if (($parent_id ne $message_id) or $reply_to_id) {
-        $entity->head()->add('In-Reply-To', ($reply_to_id || $parent_id));
-        if ($reply_to_thread) {
-            my $first_id =
-                $self->_message_to_id($conversation, { ts => $first_ts });
-            $entity->head()->add('References', "$first_id $parent_id");
-        } else {
-            $entity->head()->add('References', "$parent_id");
-        }
-    }
-
-    my $reply_to =
-        ($reply_to_thread)
-            ? "$conversation+$thread_ts\@$ws_domain_name\n"
-            : "$conversation\@$ws_domain_name\n";
-    $entity->head()->add('Reply-To', $reply_to);
-    $entity->head()->add('X-Paws-Thread-TS', $thread_ts);
-    $entity->head()->delete('X-Mailer');
-
-    $self->{'write_callback'}->($entity);
-
-    return 1;
 }
 
 sub _write_delete_message
@@ -256,34 +138,39 @@ sub _receive_conversation
                     if ($data->{'error'}) {
                         die Dumper($data);
                     }
+                    $data->{'messages'} = [
+                        map { App::Paws::Message->new($context, $ws,
+                                                      $conversation, $_) }
+                            @{$data->{'messages'}}
+                    ];
                     for my $message (@{$data->{'messages'} || []}) {
-                        if ($message->{'thread_ts'}) {
-                            if (not grep { $_ eq $message->{'thread_ts'} }
-                                    @{$thread_tss}) {
-                                push @{$thread_tss}, $message->{'thread_ts'};
+                        my $thread_ts = $message->thread_ts();
+                        if ($thread_ts) {
+                            if (not first { $_ eq $thread_ts } @{$thread_tss}) {
+                                push @{$thread_tss}, $thread_ts;
                             }
                         }
                     }
+
                     my %seen_messages;
                     for my $message (@{$data->{'messages'} || []}) {
-                        $seen_messages{$message->{'ts'}} = 1;
-                        if ($message->{'edited'}) {
-                            if ($edits->{$message->{'edited'}->{'ts'}}) {
+                        my $ts = $message->ts();
+                        my $edited_ts = $message->edited_ts();
+                        if ($edited_ts and not $edits->{$edited_ts}) {
+                            if ($edits->{$edited_ts}) {
                                 next;
                             }
-                            my $parent_id =
-                                $self->_message_to_id(
-                                    $conversation,
-                                    { ts => $message->{'ts'} });
-                            $self->_write_message($conversation, $message,
-                                                $first_ts, $first_ts,
-                                                $parent_id);
-                            $deliveries->{$message->{'ts'}} = 1;
-                            $edits->{$message->{'edited'}->{'ts'}} = 1;
+                            my $parent_id = $message->id(1);
+                            my $entity = $message->to_entity(
+                                $first_ts, $first_ts, $parent_id
+                            );
+                            $self->{'write_callback'}->($entity);
+                            $deliveries->{$ts} = 1;
+                            $edits->{$edited_ts} = 1;
                         }
+                        $seen_messages{$ts} = 1;
                     }
                     if ($data->{'response_metadata'}->{'next_cursor'}) {
-
                         $history_req = $ws->get_history_request(
                                                 $conversation_id,
                                                 ($stored_last_ts -
@@ -307,8 +194,7 @@ sub _receive_conversation
                             }
                             $seen_messages{$ts} = 1;
                             $deletions->{$ts} = 1;
-                            $self->_write_delete_message($ws_name, $conversation, $ts,
-                                                            );
+                            $self->_write_delete_message($ws_name, $conversation, $ts);
                         }
                     }
                 };
@@ -340,18 +226,23 @@ sub _receive_conversation
                 $db_conversation->{'first_msg_ts'}
                     ||= minstr map { $_->{'ts'} } @{$data->{'messages'}};
                 my $first_ts = $db_conversation->{'first_msg_ts'};
+                $data->{'messages'} = [
+                    map { App::Paws::Message->new($context, $ws,
+                                                    $conversation, $_) }
+                        @{$data->{'messages'}}
+                ];
                 for my $message (@{$data->{'messages'}}) {
-                    $self->_write_message($conversation, $message,
-                                $first_ts, $first_ts);
-                    $deliveries->{$message->{'ts'}} = 1;
-                    if ($message->{'ts'} >=
-                            ($db_conversation->{'last_ts'} || 1)) {
-                        $db_conversation->{'last_ts'} = $message->{'ts'};
+                    my $ts = $message->ts();
+                    my $thread_ts = $message->thread_ts();
+                    my $entity = $message->to_entity($first_ts, $first_ts);
+                    $self->{'write_callback'}->($entity);
+                    $deliveries->{$ts} = 1;
+                    if ($ts >= ($db_conversation->{'last_ts'} || 1)) {
+                        $db_conversation->{'last_ts'} = $ts;
                     }
-                    if ($message->{'thread_ts'}) {
-                        if (not grep { $_ eq $message->{'thread_ts'} }
-                                @{$thread_tss}) {
-                            push @{$thread_tss}, $message->{'thread_ts'};
+                    if ($thread_ts) {
+                        if (not first { $_ eq $thread_ts } @{$thread_tss}) {
+                            push @{$thread_tss}, $thread_ts;
                         }
                     }
                 }
@@ -438,23 +329,25 @@ sub _receive_conversation_threads
                         if ($replies->{'error'}) {
                             die Dumper($replies);
                         }
+                        $replies->{'messages'} = [
+                            map { App::Paws::Message->new($context, $ws,
+                                                          $conversation, $_) }
+                                @{$replies->{'messages'}}
+                        ];
                         my %seen_messages;
                         for my $sub_message (@{$replies->{'messages'}}) {
-                            $seen_messages{$sub_message->{'ts'}} = 1;
-                            if ($sub_message->{'edited'}) {
-                                if ($edits->{$sub_message->{'edited'}->{'ts'}}) {
+                            $seen_messages{$sub_message->ts()} = 1;
+                            if ($sub_message->edited_ts()) {
+                                if ($edits->{$sub_message->edited_ts()}) {
                                     next;
                                 }
-                                my $parent_id =
-                                    $self->_message_to_id(
-                                        $conversation,
-                                        { ts => $sub_message->{'ts'} });
-                                $self->_write_message($conversation,
-                                                    $sub_message,
-                                                    $first_ts, $thread_ts,
-                                                    $parent_id);
-                                $deliveries->{$sub_message->{'ts'}} = 1;
-                                $edits->{$sub_message->{'edited'}->{'ts'}} = 1;
+                                my $parent_id = $sub_message->id(1);
+                                my $entity = $sub_message->to_entity(
+                                    $first_ts, $thread_ts, $parent_id
+                                );
+                                $self->{'write_callback'}->($entity);
+                                $deliveries->{$sub_message->ts()} = 1;
+                                $edits->{$sub_message->edited_ts()} = 1;
                             }
                         }
                         if ($replies->{'response_metadata'}
@@ -528,17 +421,22 @@ sub _receive_conversation_threads
 			if ($replies->{'error'}) {
 			    die Dumper($replies);
 			}
+                        $replies->{'messages'} = [
+                            map { App::Paws::Message->new($context, $ws,
+                                                          $conversation, $_) }
+                                @{$replies->{'messages'}}
+                        ];
                         for my $sub_message (@{$replies->{'messages'}}) {
-                            if ($sub_message->{'ts'} eq $thread_ts) {
+                            if ($sub_message->ts() eq $thread_ts) {
                                 next;
                             }
                             my $first_ts = $db_conversation->{'first_msg_ts'};
-                            $self->_write_message($conversation, $sub_message,
-                                                $first_ts, $thread_ts,
-                                                );
-                            $deliveries->{$sub_message->{'ts'}} = 1;
-                            if ($sub_message->{'ts'} >= $last_ts) {
-                                $last_ts = $sub_message->{'ts'};
+                            my $entity = $sub_message->to_entity(
+                                $first_ts, $thread_ts
+                            );
+                            $deliveries->{$sub_message->ts()} = 1;
+                            if ($sub_message->ts() >= $last_ts) {
+                                $last_ts = $sub_message->ts();
                             }
                         }
                         if ($replies->{'has_more'}) {
