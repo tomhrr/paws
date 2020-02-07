@@ -203,4 +203,36 @@ sub to_entity
     return $entity;
 }
 
+sub to_delete_entity
+{
+    my ($self) = @_;
+
+    my $context = $self->{'context'};
+    my $ws_name = $self->{'workspace'}->name();
+    my $conversation = $self->{'conversation'};
+
+    my $message_id = $self->id();
+    my $del_message_id = $message_id;
+    $del_message_id =~ s/@/.deleted@/;
+
+    my $domain_name = $context->domain_name();
+    my $ws_domain_name = "$ws_name.$domain_name";
+
+    my $time = time();
+    my $entity = MIME::Entity->build(
+        Date          => _get_mail_date($time),
+        From          => "paws-admin\@$ws_domain_name",
+        To            => $context->user_email(),
+        Subject       => "Message from $conversation (deleted)",
+        'Message-ID'  => $del_message_id,
+        'References'  => $message_id,
+        Charset       => 'UTF-8',
+        Encoding      => 'base64',
+        Data          => 'Message deleted.',
+    );
+    $entity->head()->add('In-Reply-To', $message_id);
+
+    return $entity;
+}
+
 1;

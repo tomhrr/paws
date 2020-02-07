@@ -33,59 +33,6 @@ sub new
     return $self;
 }
 
-sub _get_mail_date
-{
-    return strftime("%a, %d %b %Y %H:%M:%S %z", localtime($_[0]));
-}
-
-sub _message_to_id
-{
-    my ($self, $conversation, $message) = @_;
-
-    my $context = $self->{'context'};
-    my $ws_name = $self->{'workspace'}->name();
-
-    my $orig_ts = $message->{'ts'};
-    my $domain_name = $context->domain_name();
-    my $local_part = "$orig_ts.$conversation";
-    if ($message->{'edited'}) {
-        $local_part = $message->{'edited'}->{'ts'}.'.'.$local_part;
-    }
-    return "<$local_part\@$ws_name.$domain_name>";
-}
-
-sub _write_delete_message
-{
-    my ($self, $ws_name, $conversation, $ts) = @_;
-
-    my $context = $self->{'context'};
-
-    my $message_id = $self->_message_to_id($conversation, { ts => $ts });
-    my $del_message_id = $message_id;
-    $del_message_id =~ s/@/.deleted@/;
-
-    my $domain_name = $context->domain_name();
-    my $ws_domain_name = "$ws_name.$domain_name";
-
-    my $time = time();
-    my $entity = MIME::Entity->build(
-        Date          => _get_mail_date($time),
-        From          => "paws-admin\@$ws_domain_name",
-        To            => $context->user_email(),
-        Subject       => "Message from $conversation (deleted)",
-        'Message-ID'  => $del_message_id,
-        'References'  => $message_id,
-        Charset       => 'UTF-8',
-        Encoding      => 'base64',
-        Data          => 'Message deleted.',
-    );
-    $entity->head()->add('In-Reply-To', $message_id);
-
-    $self->{'write_callback'}->($entity);
-
-    return 1;
-}
-
 sub _receive_conversation
 {
     my ($self, $db_conversation, $conversation_map, $conversation,
@@ -194,7 +141,12 @@ sub _receive_conversation
                             }
                             $seen_messages{$ts} = 1;
                             $deletions->{$ts} = 1;
-                            $self->_write_delete_message($ws_name, $conversation, $ts);
+                            my $del_message = App::Paws::Message->new(
+                                $context, $ws, $conversation,
+                                { ts => $ts }
+                            );
+                            my $entity = $del_message->to_delete_entity();
+                            $self->{'write_callback'}->($entity);
                         }
                     }
                 };
@@ -376,9 +328,12 @@ sub _receive_conversation_threads
                                 }
                                 $seen_messages{$ts} = 1;
                                 $deletions->{$ts} = 1;
-                                $self->_write_delete_message($ws_name,
-                                                            $conversation, $ts,
-                                                            );
+                                my $del_message = App::Paws::Message->new(
+                                    $context, $ws, $conversation,
+                                    { ts => $ts }
+                                );
+                                my $entity = $del_message->to_delete_entity();
+                                $self->{'write_callback'}->($entity);
                             }
                         }
                     };
@@ -502,8 +457,7 @@ sub _run_internal
                     $db->{'conversation-map'} =
                         { %{$db->{'conversation-map'} || {}},
                           %conversation_map };
-                    $conversation_map =
-                        \%conversation_map;
+                    $conversation_map = $db->{'conversation-map'};
 
 		    if ($data->{'response_metadata'}->{'next_cursor'}) {
 			my $req = $ws->standard_get_request_only(
