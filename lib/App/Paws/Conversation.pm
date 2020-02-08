@@ -12,22 +12,20 @@ sub new
     my %args = @_;
 
     my $self = {
-        context        => $args{'context'},
-        workspace      => $args{'workspace'},
-        write_callback => $args{'write_callback'},
-        name           => $args{'name'},
-        id             => $args{'id'},
-        # edits, deletions, first_msg_ts, last_ts, thread_tss,
-        # thread_ts, deliveries.
+        context   => $args{'context'},
+        workspace => $args{'workspace'},
+        id        => $args{'id'},
+        name      => $args{'name'},
+        write_cb  => $args{'write_cb'},
         %{$args{'data'}},
     };
-    $self->{'thread_tss'} ||= [];
-    $self->{'thread_ts'} ||= {};
-    $self->{'first_msg_ts'} ||= 0;
-    $self->{'last_ts'} ||= 1;
+
+    $self->{'first_ts'}   ||= 0;
+    $self->{'last_ts'}    ||= 1;
+    $self->{'threads'}    ||= {};
     $self->{'deliveries'} ||= {};
-    $self->{'deletions'} ||= {};
-    $self->{'edits'} ||= {};
+    $self->{'deletions'}  ||= {};
+    $self->{'edits'}      ||= {};
 
     bless $self, $class;
     return $self;
@@ -38,189 +36,291 @@ sub to_data
     my ($self) = @_;
 
     return { map { $_ => $self->{$_} }
-        qw(thread_tss thread_ts first_msg_ts
-           last_ts deliveries deletions edits)
+        qw(first_ts last_ts threads
+           deliveries deletions edits)
     };
 }
 
-sub id
+sub _process_response
 {
-    return $_[0]->{'id'};
+    my ($res) = @_;
+
+    if (not $res->is_success()) {
+        print STDERR "Unable to process response: ".
+                     $res->as_string()."\n";
+        return;
+    }
+    my $data = decode_json($res->content());
+    if ($data->{'error'}) {
+        print STDERR "Error on process response: ".
+                     $res->as_string()."\n";
+        return;
+    }
+
+    return $data;
+}
+
+sub _check_for_new_threads
+{
+    my ($messages, $threads) = @_;
+
+    for my $message (@{$messages}) {
+        my $thread_ts = $message->thread_ts();
+        if ($thread_ts) {
+            $threads->{$thread_ts} ||= {
+                last_ts    => 1,
+                deliveries => {},
+                edits      => {},
+                deletions  => {},
+            };
+        }
+    }
+
+    return 1;
+}
+
+sub _write_new_edits
+{
+    my ($messages, $first_ts, $thread_ts,
+        $edits, $deliveries, $write_cb) = @_;
+
+    for my $message (@{$messages}) {
+        my $ts = $message->ts();
+        my $edited_ts = $message->edited_ts();
+        if ($edited_ts and not $edits->{$edited_ts}) {
+            my $parent_id = $message->id(1);
+            my $entity = $message->to_entity($first_ts, $thread_ts,
+                                             $parent_id);
+            $write_cb->($entity);
+            $deliveries->{$ts} = 1;
+            $edits->{$edited_ts} = 1;
+        }
+    }
+
+    return 1;
+}
+
+sub _delete_absent_messages
+{
+    my ($deliveries, $context, $ws, $name, $begin_ts, $last_ts,
+        $seen_messages, $deletions, $write_cb) = @_;
+
+    my @deliveries_list =
+        grep { $_ ge $begin_ts and $_ le $last_ts }
+            keys %{$deliveries};
+    for my $ts (@deliveries_list) {
+        if ($seen_messages->{$ts}) {
+            next;
+        }
+        if ($deletions->{$ts}) {
+            next;
+        }
+        $seen_messages->{$ts} = 1;
+        $deletions->{$ts} = 1;
+        my $message = App::Paws::Message->new(
+            $context, $ws, $name, { ts => $ts }
+        );
+        my $entity = $message->to_delete_entity();
+        $write_cb->($entity);
+    }
+
+    return 1;
+}
+
+sub _receive_modifications
+{
+    my ($self) = @_;
+
+    my $context    = $self->{'context'};
+    my $ws         = $self->{'workspace'};
+    my $id         = $self->{'id'};
+    my $name       = $self->{'name'};
+    my $write_cb   = $self->{'write_cb'};
+    my $first_ts   = $self->{'first_ts'};
+    my $last_ts    = $self->{'last_ts'};
+    my $threads    = $self->{'threads'};
+    my $deliveries = $self->{'deliveries'};
+    my $deletions  = $self->{'deletions'};
+    my $edits      = $self->{'edits'};
+    my $runner     = $context->runner();
+    my $begin_ts   = $last_ts - $ws->modification_window();
+
+    my %seen_messages;
+    my $history_req = $ws->get_history_request($id, $begin_ts, $last_ts);
+    $runner->add('conversations.history', $history_req, sub {
+        eval {
+            my ($runner, $res, $fn) = @_;
+            my $data = _process_response($res);
+            if (not $data) {
+                return;
+            }
+
+            my @messages =
+                map { App::Paws::Message->new($context, $ws, $name, $_) }
+                    @{$data->{'messages'}};
+            _check_for_new_threads(\@messages, $threads);
+            _write_new_edits(\@messages, $first_ts, $first_ts,
+                             $edits, $deliveries, $write_cb);
+            for my $message (@messages) {
+                $seen_messages{$message->ts()} = 1;
+            }
+
+            if (my $cursor =
+                    $data->{'response_metadata'}->{'next_cursor'}) {
+                $history_req =
+                    $ws->get_history_request($id, $begin_ts,
+                                             $last_ts, $cursor);
+                $runner->add('conversations.history', $history_req, $fn);
+            } else {
+                _delete_absent_messages($deliveries, $context, $ws, $name,
+                                        $begin_ts, $last_ts,
+                                        \%seen_messages,
+                                        $deletions, $write_cb);
+            }
+        };
+        if (my $error = $@) {
+            print STDERR $error."\n";
+        }
+    });
 }
 
 sub receive_messages
 {
     my ($self, $since_ts) = @_;
 
-    my $context = $self->{'context'};
-    my $ws = $self->{'workspace'};
-    my $ws_name = $ws->name();
-    my $token = $ws->token();
-
-    my $thread_tss = $self->{'thread_tss'};
-
-    my $stored_last_ts = $self->{'last_ts'};
-    if ($since_ts and ($stored_last_ts < $since_ts)) {
-        $stored_last_ts = $since_ts;
-        $self->{'last_ts'} = $stored_last_ts;
-    }
-    my $new_last_ts = $stored_last_ts;
-    my $id = $self->id();
-
-    my $modification_window = $ws->modification_window();
-    my $first_ts = $self->{'first_msg_ts'};
+    my $context    = $self->{'context'};
+    my $ws         = $self->{'workspace'};
+    my $id         = $self->{'id'};
+    my $name       = $self->{'name'};
+    my $write_cb   = $self->{'write_cb'};
+    my $first_ts   = $self->{'first_ts'};
+    my $last_ts    = $self->{'last_ts'};
     my $deliveries = $self->{'deliveries'};
-    my $deletions = $self->{'deletions'};
-    my $edits = $self->{'edits'};
+    my $deletions  = $self->{'deletions'};
+    my $threads    = $self->{'threads'};
+    my $edits      = $self->{'edits'};
+    my $runner     = $context->runner();
 
-    if ($modification_window and $first_ts) {
+    if ($since_ts and ($last_ts < $since_ts)) {
+        $last_ts = $since_ts;
+        $self->{'last_ts'} = $last_ts;
+    }
+
+    if ($ws->modification_window() and $first_ts) {
+        $self->_receive_modifications();
+    }
+
+    my $history_req = $ws->get_history_request($id, $last_ts);
+    $runner->add('conversations.history', $history_req, sub {
+        my ($runner, $res, $fn) = @_;
         eval {
-            my $history_req =
-                $ws->get_history_request($id,
-                                        ($stored_last_ts -
-                                        $modification_window),
-                                        $stored_last_ts);
-            my $runner = $context->runner();
-            my $id = $runner->add('conversations.history',
-                        $history_req, sub {
-                my ($runner, $res, $fn) = @_;
-                eval {
-                    if (not $res->is_success()) {
-                        die Dumper($res);
-                    }
-                    my $data = decode_json($res->content());
-                    if ($data->{'error'}) {
-                        die Dumper($data);
-                    }
-                    $data->{'messages'} = [
-                        map { App::Paws::Message->new($context, $ws,
-                                                      $self->{'name'}, $_) }
-                            @{$data->{'messages'}}
-                    ];
-                    for my $message (@{$data->{'messages'} || []}) {
-                        my $thread_ts = $message->thread_ts();
-                        if ($thread_ts) {
-                            if (not first { $_ eq $thread_ts } @{$thread_tss}) {
-                                push @{$thread_tss}, $thread_ts;
-                            }
-                        }
-                    }
+            my $data = _process_response($res);
+            if (not $data) {
+                return;
+            }
 
-                    my %seen_messages;
-                    for my $message (@{$data->{'messages'} || []}) {
-                        my $ts = $message->ts();
-                        my $edited_ts = $message->edited_ts();
-                        if ($edited_ts and not $edits->{$edited_ts}) {
-                            if ($edits->{$edited_ts}) {
-                                next;
-                            }
-                            my $parent_id = $message->id(1);
-                            my $entity = $message->to_entity(
-                                $first_ts, $first_ts, $parent_id
-                            );
-                            $self->{'write_callback'}->($entity);
-                            $deliveries->{$ts} = 1;
-                            $edits->{$edited_ts} = 1;
-                        }
-                        $seen_messages{$ts} = 1;
-                    }
-                    if ($data->{'response_metadata'}->{'next_cursor'}) {
-                        $history_req = $ws->get_history_request(
-                                                $id,
-                                                ($stored_last_ts -
-                                                $modification_window),
-                                                $stored_last_ts,
-                                                $data->{'response_metadata'}
-                                                    ->{'next_cursor'});
-                        $runner->add('conversations.history',
-                            $history_req, $fn);
-                    } else {
-                        my @deliveries_list =
-                            grep { $_ ge ($stored_last_ts - $modification_window)
-                                    and $_ le $stored_last_ts }
-                                keys %{$deliveries};
-                        for my $ts (@deliveries_list) {
-                            if ($deletions->{$ts}) {
-                                next;
-                            }
-                            if ($seen_messages{$ts}) {
-                                next;
-                            }
-                            $seen_messages{$ts} = 1;
-                            $deletions->{$ts} = 1;
-                            my $del_message = App::Paws::Message->new(
-                                $context, $ws, $self->{'name'},
-                                { ts => $ts }
-                            );
-                            my $entity = $del_message->to_delete_entity();
-                            $self->{'write_callback'}->($entity);
-                        }
-                    }
-                };
-                if (my $error = $@) {
-                    warn $error;
+            $first_ts ||= minstr map { $_->{'ts'} } @{$data->{'messages'}};
+            $self->{'first_ts'} = $first_ts;
+
+            my @messages =
+                map { App::Paws::Message->new($context, $ws,
+                                              $name, $_) }
+                    @{$data->{'messages'}};
+            _check_for_new_threads(\@messages, $threads);
+            for my $message (@messages) {
+                my $ts = $message->ts();
+                my $entity = $message->to_entity($first_ts, $first_ts);
+                $write_cb->($entity);
+                $deliveries->{$ts} = 1;
+                if ($ts > $self->{'last_ts'}) {
+                    $self->{'last_ts'} = $ts;
                 }
-            });
+            }
+
+            if ($data->{'has_more'}) {
+                $history_req =
+                    $ws->get_history_request($id, $self->{'last_ts'});
+                $runner->add('conversations.history', $history_req, $fn);
+            }
         };
         if (my $error = $@) {
-            warn $error;
+            print STDERR $error."\n";
         }
-    }
+    });
 
-    eval {
-        my $history_req =
-            $ws->get_history_request($id, $stored_last_ts);
-        my $runner = $context->runner();
-        my $id = $runner->add('conversations.history',
-                    $history_req, sub {
+    return 1;
+}
+
+sub _receive_thread_modifications
+{
+    my ($self, $since_ts) = @_;
+
+    my $context    = $self->{'context'};
+    my $ws         = $self->{'workspace'};
+    my $id         = $self->{'id'};
+    my $name       = $self->{'name'};
+    my $write_cb   = $self->{'write_cb'};
+    my $first_ts   = $self->{'first_ts'};
+    my $last_ts    = $self->{'last_ts'};
+    my $threads    = $self->{'threads'};
+    my $runner     = $context->runner();
+    my $begin_ts   = $last_ts - $ws->modification_window();
+
+    my $modification_window = $ws->modification_window();
+
+    for my $thread_ts (keys %{$threads}) {
+        my $thread_data = $threads->{$thread_ts};
+        my $last_ts     = $thread_data->{'last_ts'} || 1;
+        my $deliveries  = $thread_data->{'deliveries'};
+        my $deletions   = $thread_data->{'deletions'};
+        my $edits       = $thread_data->{'edits'};
+
+        if ($since_ts and ($last_ts < $since_ts)) {
+            $last_ts = $since_ts;
+            $thread_data->{'last_ts'} = $last_ts;
+        }
+        if (($last_ts != 1)
+                and ($last_ts < (time() - $ws->thread_expiry()))) {
+            next;
+        }
+
+        my %seen_messages;
+        my $replies_req =
+            $ws->get_replies_request($id, $thread_ts, $begin_ts, $last_ts);
+        $runner->add('conversations.replies', $replies_req, sub {
             my ($runner, $res, $fn) = @_;
             eval {
-                if (not $res->is_success()) {
-                    die Dumper($res);
+                my $data = _process_response($res);
+                if (not $data) {
+                    return;
                 }
-                my $data = decode_json($res->content());
-                if ($data->{'error'}) {
-                    die Dumper($data);
+
+                my @messages =
+                    map { App::Paws::Message->new($context, $ws, $name, $_) }
+                        @{$data->{'messages'}};
+                _write_new_edits(\@messages, $first_ts, $thread_ts,
+                                 $edits, $deliveries, $write_cb);
+                for my $message (@messages) {
+                    $seen_messages{$message->ts()} = 1;
                 }
-                $self->{'first_msg_ts'}
-                    ||= minstr map { $_->{'ts'} } @{$data->{'messages'}};
-                my $first_ts = $self->{'first_msg_ts'};
-                $data->{'messages'} = [
-                    map { App::Paws::Message->new($context, $ws,
-                                                    $self->{'name'}, $_) }
-                        @{$data->{'messages'}}
-                ];
-                for my $message (@{$data->{'messages'}}) {
-                    my $ts = $message->ts();
-                    my $thread_ts = $message->thread_ts();
-                    my $entity = $message->to_entity($first_ts, $first_ts);
-                    $self->{'write_callback'}->($entity);
-                    $deliveries->{$ts} = 1;
-                    if ($ts >= $self->{'last_ts'}) {
-                        $self->{'last_ts'} = $ts;
-                    }
-                    if ($thread_ts) {
-                        if (not first { $_ eq $thread_ts } @{$thread_tss}) {
-                            push @{$thread_tss}, $thread_ts;
-                        }
-                    }
-                }
-                if ($data->{'has_more'}) {
-                    $history_req =
-                        $ws->get_history_request(
-                            $id,
-                            $self->{'last_ts'});
-                    $runner->add('conversations.history',
-                        $history_req, $fn);
+
+                if (my $cursor =
+                        $data->{'response_metadata'}->{'next_cursor'}) {
+                    $replies_req =
+                        $ws->get_replies_request($id, $thread_ts, $begin_ts,
+                                                 $last_ts, $cursor);
+                    $runner->add('conversations.replies', $replies_req, $fn);
+                } else {
+                    _delete_absent_messages($deliveries, $context, $ws, $name,
+                                            $begin_ts, $last_ts,
+                                            \%seen_messages,
+                                            $deletions, $write_cb);
                 }
             };
             if (my $error = $@) {
-                warn $error;
+                print STDERR $error."\n";
             }
         });
-    };
-    if (my $error = $@) {
-        warn $error;
     }
 
     return 1;
@@ -230,188 +330,82 @@ sub receive_threads
 {
     my ($self, $since_ts) = @_;
 
-    my $id = $self->id();
-    my $context = $self->{'context'};
-    my $ws = $self->{'workspace'};
-    my $ws_name = $ws->name();
-    my $token = $ws->token();
+    my $context    = $self->{'context'};
+    my $ws         = $self->{'workspace'};
+    my $id         = $self->{'id'};
+    my $name       = $self->{'name'};
+    my $write_cb   = $self->{'write_cb'};
+    my $first_ts   = $self->{'first_ts'};
+    my $last_ts    = $self->{'last_ts'};
+    my $threads    = $self->{'threads'};
+    my $runner     = $context->runner();
+    my $begin_ts   = $last_ts - $ws->modification_window();
 
-    my @thread_tss = @{$self->{'thread_tss'}};
-    my $stored_last_ts = $self->{'last_ts'};
-    if ($since_ts and ($stored_last_ts < $since_ts)) {
-        $stored_last_ts = $since_ts;
-        $self->{'last_ts'} = $stored_last_ts;
+    if ($since_ts and ($last_ts < $since_ts)) {
+        $last_ts = $since_ts;
+        $self->{'last_ts'} = $last_ts;
     }
-    my $new_last_ts = $stored_last_ts;
 
-    my $modification_window = $ws->modification_window();
-    my $first_ts = $self->{'first_msg_ts'};
-    my $db_thread_ts = $self->{'thread_ts'};
-
-    if ($modification_window and $first_ts) {
+    if ($ws->modification_window() and $first_ts) {
         eval {
-            for my $thread_ts (@thread_tss) {
-                my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
-                if ($since_ts and ($last_ts < $since_ts)) {
-                    $last_ts = $since_ts;
-                    $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
-                }
-                if (($last_ts != 1)
-                        and ($last_ts < (time() - $ws->thread_expiry()))) {
-                    next;
-                }
-                my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'};
-                my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'};
-                my $edits = $db_thread_ts->{$thread_ts}->{'edits'};
-
-                my $replies_req =
-                    $ws->get_replies_request($id,
-                                            $thread_ts,
-                                            ($last_ts -
-                                            $modification_window),
-                                            $last_ts);
-                my $runner = $context->runner();
-                my $id = $runner->add('conversations.replies',
-                            $replies_req, sub {
-                    my ($runner, $res, $fn) = @_;
-                    eval {
-                        if (not $res->is_success()) {
-                            die Dumper($res);
-                        }
-                        my $replies = decode_json($res->content());
-                        if ($replies->{'error'}) {
-                            die Dumper($replies);
-                        }
-                        $replies->{'messages'} = [
-                            map { App::Paws::Message->new($context, $ws,
-                                                          $self->{'name'}, $_) }
-                                @{$replies->{'messages'}}
-                        ];
-                        my %seen_messages;
-                        for my $sub_message (@{$replies->{'messages'}}) {
-                            $seen_messages{$sub_message->ts()} = 1;
-                            if ($sub_message->edited_ts()) {
-                                if ($edits->{$sub_message->edited_ts()}) {
-                                    next;
-                                }
-                                my $parent_id = $sub_message->id(1);
-                                my $entity = $sub_message->to_entity(
-                                    $first_ts, $thread_ts, $parent_id
-                                );
-
-                                $self->{'write_callback'}->($entity);
-                                $deliveries->{$sub_message->ts()} = 1;
-                                $edits->{$sub_message->edited_ts()} = 1;
-                            }
-                        }
-                        if ($replies->{'response_metadata'}
-                                    ->{'next_cursor'}) {
-                            $replies_req = $ws->get_replies_request(
-                                                $id,
-                                                $thread_ts,
-                                                ($last_ts -
-                                                $modification_window),
-                                                $last_ts,
-                                                $replies->{'response_metadata'}
-                                                        ->{'next_cursor'});
-                            $runner->add('conversations.replies',
-                                $replies_req, $fn);
-                        } else {
-                            my @deliveries_list =
-                                grep { $_ ge ($last_ts - $modification_window)
-                                        and $_ le $last_ts }
-                                    keys %{$deliveries};
-                            for my $ts (@deliveries_list) {
-                                if ($seen_messages{$ts}) {
-                                    next;
-                                }
-                                if ($deletions->{$ts}) {
-                                    next;
-                                }
-                                $seen_messages{$ts} = 1;
-                                $deletions->{$ts} = 1;
-                                my $del_message = App::Paws::Message->new(
-                                    $context, $ws, $self->{'name'},
-                                    { ts => $ts }
-                                );
-                                my $entity = $del_message->to_delete_entity();
-                                $self->{'write_callback'}->($entity);
-                            }
-                        }
-                    };
-                    if (my $error = $@) {
-                        warn $error;
-                    }
-                });
-            }
+            $self->_receive_thread_modifications($since_ts);
         };
         if (my $error = $@) {
-            warn $error;
+            print STDERR $error."\n";
         }
     }
 
-    for my $thread_ts (@thread_tss) {
-        my $last_ts = $db_thread_ts->{$thread_ts}->{'last_ts'} || 1;
+    for my $thread_ts (keys %{$threads}) {
+        my $thread_data = $threads->{$thread_ts};
+        my $last_ts     = $thread_data->{'last_ts'};
+        my $deliveries  = $thread_data->{'deliveries'};
+        my $deletions   = $thread_data->{'deletions'};
+        my $edits       = $thread_data->{'edits'};
+
         if ($since_ts and ($last_ts < $since_ts)) {
             $last_ts = $since_ts;
-            $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
+            $thread_data->{'last_ts'} = $last_ts;
         }
         if (($last_ts != 1)
                 and ($last_ts < (time() - $ws->thread_expiry()))) {
             next;
         }
-        my $deliveries = $db_thread_ts->{$thread_ts}->{'deliveries'} || {};
-        my $deletions = $db_thread_ts->{$thread_ts}->{'deletions'} || {};
-        my $edits = $db_thread_ts->{$thread_ts}->{'edits'} || {};
 
-        my $replies_req = $ws->get_replies_request($id,
-                                           $thread_ts, $last_ts);
-        my $runner = $context->runner();
-        my $id = $runner->add('conversations.replies',
-                     $replies_req, sub {
-                        my ($runner, $res, $fn) = @_;
-                        eval {
-			if (not $res->is_success()) {
-			    die Dumper($res);
-			}
-			my $replies = decode_json($res->content());
-			if ($replies->{'error'}) {
-			    die Dumper($replies);
-			}
-                        $replies->{'messages'} = [
-                            map { App::Paws::Message->new($context, $ws,
-                                                          $self->{'name'}, $_) }
-                                @{$replies->{'messages'}}
-                        ];
-                        for my $sub_message (@{$replies->{'messages'}}) {
-                            if ($sub_message->ts() eq $thread_ts) {
-                                next;
-                            }
-                            my $first_ts = $self->{'first_msg_ts'};
-                            my $entity = $sub_message->to_entity(
-                                $first_ts, $thread_ts
-                            );
-                            $self->{'write_callback'}->($entity);
-                            $deliveries->{$sub_message->ts()} = 1;
-                            if ($sub_message->ts() >= $last_ts) {
-                                $last_ts = $sub_message->ts();
-                            }
-                        }
-                        if ($replies->{'has_more'}) {
-                            $replies_req = $ws->get_replies_request($id,
-                                                        $thread_ts, $last_ts);
-                            my $new_id = $runner->add('conversations.replies',
-                                            $replies_req,
-                                            $fn);
-                        }
-                    };
-                    if (my $error = $@) {
-                        warn $error;
+        my $replies_req =
+            $ws->get_replies_request($id, $thread_ts, $last_ts);
+        $runner->add('conversations.replies', $replies_req, sub {
+            my ($runner, $res, $fn) = @_;
+            eval {
+                my $data = _process_response($res);
+                if (not $data) {
+                    return;
+                }
+
+                my @messages =
+                    map { App::Paws::Message->new($context, $ws,
+                                                  $name, $_) }
+                        @{$data->{'messages'}};
+                for my $message (@messages) {
+                    if ($message->ts() eq $thread_ts) {
+                        next;
                     }
-                    $db_thread_ts->{$thread_ts}->{'last_ts'} = $last_ts;
-                    $db_thread_ts->{$thread_ts}->{'deliveries'} = $deliveries;
-                    $db_thread_ts->{$thread_ts}->{'deletions'} = $deletions;
-                    $db_thread_ts->{$thread_ts}->{'edits'} = $edits;
+                    my $entity = $message->to_entity($first_ts, $thread_ts);
+                    $write_cb->($entity);
+                    $deliveries->{$message->ts()} = 1;
+                    if ($message->ts() > $last_ts) {
+                        $last_ts = $message->ts();
+                    }
+                }
+                if ($data->{'has_more'}) {
+                    $replies_req =
+                        $ws->get_replies_request($id, $thread_ts, $last_ts);
+                    $runner->add('conversations.replies', $replies_req, $fn);
+                }
+            };
+            if (my $error = $@) {
+                print STDERR $error,"\n";
+            }
+            $thread_data->{'last_ts'} = $last_ts;
         });
     }
 

@@ -38,8 +38,6 @@ sub _run_internal
     }
 
     my $db = decode_json(read_file($path));
-    use Data::Dumper;
-#    print Dumper($db);
 
     my $conversation_map = $db->{'conversation-map'} || {};
     my %previous_map = %{$conversation_map};
@@ -114,7 +112,7 @@ sub _run_internal
         my $conversation_obj = App::Paws::Conversation->new(
             context => $context,
             workspace => $ws,
-            write_callback => $self->{'write_callback'},
+            write_cb => $self->{'write_cb'},
             name => $conversation,
             id => $conversation_map->{$conversation},
             data => $data,
@@ -144,7 +142,7 @@ sub _run_internal
             my $conversation_obj = App::Paws::Conversation->new(
                 context => $context,
                 workspace => $ws,
-                write_callback => $self->{'write_callback'},
+                write_cb => $self->{'write_cb'},
                 name => $conversation,
                 id => $conversation_map->{$conversation},
                 data => $data,
@@ -169,7 +167,7 @@ sub _run_internal
         my $conversation_obj = App::Paws::Conversation->new(
             context => $context,
             workspace => $ws,
-            write_callback => $self->{'write_callback'},
+            write_cb => $self->{'write_cb'},
             name => $conversation,
             id => $conversation_map->{$conversation},
             data => $data

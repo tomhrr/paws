@@ -41,7 +41,7 @@ sub run
         workspace => $self->{'workspace'},
         context   => $self->{'context'},
         name      => $self->{'name'},
-        write_callback => sub {
+        write_cb => sub {
             my ($entity) = @_;
 
             my $maildir = $self->{'path'};
