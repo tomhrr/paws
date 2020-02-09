@@ -22,61 +22,94 @@ sub new
     return $self;
 }
 
+sub _process_conversations
+{
+    my ($context, $ws, $runner, $since_ts, $db,
+        $write_cb, $conversation_map, $method_name,
+        $conversations) = @_;
+
+    my @conversation_objs;
+    for my $conversation (@{$conversations}) {
+        my $data = $db->{'conversations'}->{$conversation} || {};
+        my $conversation_obj = App::Paws::Conversation->new(
+            context   => $context,
+            workspace => $ws,
+            write_cb  => $write_cb,
+            name      => $conversation,
+            id        => $conversation_map->{$conversation},
+            data      => $data,
+        );
+        $conversation_obj->$method_name($since_ts);
+        push @conversation_objs, $conversation_obj;
+    }
+    while (not $runner->poke()) {
+        sleep(0.01);
+    }
+    for my $conversation_obj (@conversation_objs) {
+        my $name = $conversation_obj->{'name'};
+        $db->{'conversations'}->{$name} =
+            $conversation_obj->to_data();
+    }
+
+    return 1;
+}
+
 sub _run_internal
 {
     my ($self, $since_ts) = @_;
 
-    my $ws = $self->{'workspace'};
     my $context = $self->{'context'};
-    my $domain_name = $context->domain_name();
-    my $to = $context->user_email();
-    my $name = $self->{'name'};
+    my $ws      = $self->{'workspace'};
+    my $to      = $context->user_email();
+    my $name    = $self->{'name'};
+    my $runner  = $self->{'context'}->runner();
 
-    my $path = $context->db_directory().'/'.$name.'-receiver-maildir-db';
+    my $path = $context->db_directory().'/'.$name.'-receiver-db';
     if (not -e $path) {
-        write_file($path, '{}');
+        write_file($path, encode_json({
+            'conversation-map' => {},
+            'conversations'    => {},
+        }));
     }
 
     my $db = decode_json(read_file($path));
-
-    my $conversation_map = $db->{'conversation-map'} || {};
+    my $conversation_map = $db->{'conversation-map'};
     my %previous_map = %{$conversation_map};
     my $has_cached = (keys %previous_map > 0) ? 1 : 0;
 
     my $req = $ws->get_conversations_request();
-    my $data;
-    my $runner = $self->{'context'}->runner();
-    $runner->add('conversations.list',
-                 $req, sub {
-                    my ($self, $res, $fn) = @_;
-                    if (not $res->is_success()) {
-                        die Dumper($res);
-                    }
-                    $data = decode_json($res->content());
-                    if ($data->{'error'}) {
-                        die Dumper($data);
-                    }
-                    my @conversations =
-                        grep { $_->{'is_im'} or $_->{'is_member'} }
-                            @{$data->{'channels'}};
-                    my %conversation_map =
-                        map { $ws->conversation_to_name($_) => $_->{'id'} }
-                            @conversations;
-                    $db->{'conversation-map'} =
-                        { %{$db->{'conversation-map'} || {}},
-                          %conversation_map };
-                    $conversation_map = $db->{'conversation-map'};
+    $runner->add('conversations.list', $req, sub {
+        my ($self, $res, $fn) = @_;
+        if (not $res->is_success()) {
+            print STDERR "Unable to process response: ".
+                         $res->as_string()."\n";
+            return;
+        }
+        my $data = decode_json($res->content());
+        if ($data->{'error'}) {
+            print STDERR "Error in response: ".
+                         $res->as_string()."\n";
+            return;
+        }
 
-		    if ($data->{'response_metadata'}->{'next_cursor'}) {
-			my $req = $ws->standard_get_request_only(
-			    '/conversations.list',
-			    { cursor => $data->{'response_metadata'}
-					    ->{'next_cursor'},
-                              types => 'public_channel,private_channel,mpim,im' }
-			);
-			$runner->add('conversations.list', $req, $fn);
-                    }
-                 });
+        my @conversations =
+            grep { $_->{'is_im'} or $_->{'is_member'} }
+                @{$data->{'channels'}};
+        for my $conversation (@conversations) {
+            my $name = $ws->conversation_to_name($conversation);
+            $conversation_map->{$name} = $conversation->{'id'};
+        }
+
+        if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
+            my $req = $ws->standard_get_request_only(
+                '/conversations.list',
+                { cursor => $cursor,
+                  types  => 'public_channel,private_channel,mpim,im' }
+            );
+            $runner->add('conversations.list', $req, $fn);
+        }
+    });
+
     my $used_cached = 0;
     if ($has_cached) {
         $used_cached = 1;
@@ -94,11 +127,10 @@ sub _run_internal
             : ($_ =~ /^(.*?)\/\*$/) ? (grep { /^$1\// }
                                             @conversation_names)
                                     : $_ }
-            @{$ws->{'conversations'}};
+            @{$ws->conversations()};
 
-    my $ws_name = $self->{'workspace'}->name();
     my %conversation_to_last_ts =
-        map { $_ => $db->{$ws_name}->{$_}->{'last_ts'} || 1 }
+        map { $_ => $db->{'conversations'}->{$_}->{'last_ts'} || 1 }
             @actual_conversations;
 
     my @sorted_conversations =
@@ -106,28 +138,10 @@ sub _run_internal
                $conversation_to_last_ts{$a} }
             @actual_conversations;
 
-    my @conversation_objs;
-    for my $conversation (@sorted_conversations) {
-        my $data = $db->{$ws_name}->{$conversation} || {};
-        my $conversation_obj = App::Paws::Conversation->new(
-            context => $context,
-            workspace => $ws,
-            write_cb => $self->{'write_cb'},
-            name => $conversation,
-            id => $conversation_map->{$conversation},
-            data => $data,
-        );
-        $conversation_obj->receive_messages($since_ts);
-        push @conversation_objs, $conversation_obj;
-    }
-    while (not $runner->poke()) {
-        sleep(0.01);
-    }
-    for my $conversation_obj (@conversation_objs) {
-        my $name = $conversation_obj->{'name'};
-        $db->{$ws_name}->{$name} =
-            $conversation_obj->to_data();
-    }
+    _process_conversations($context, $ws, $runner, $since_ts, $db,
+                           $self->{'write_cb'}, $conversation_map,
+                           'receive_messages',
+                           \@sorted_conversations);
 
     my @new_conversations;
     if ($has_cached) {
@@ -136,56 +150,19 @@ sub _run_internal
                 push @new_conversations, $name;
             }
         }
-        my @conversation_objs;
-        for my $conversation (@new_conversations) {
-            my $data = $db->{$ws_name}->{$conversation} || {};
-            my $conversation_obj = App::Paws::Conversation->new(
-                context => $context,
-                workspace => $ws,
-                write_cb => $self->{'write_cb'},
-                name => $conversation,
-                id => $conversation_map->{$conversation},
-                data => $data,
-            );
-            $conversation_obj->receive_messages($since_ts);
-            push @conversation_objs, $conversation_obj;
-        }
-        while (not $runner->poke()) {
-            sleep(0.01);
-        }
-        for my $conversation_obj (@conversation_objs) {
-            my $name = $conversation_obj->{'name'};
-            $db->{$ws_name}->{$name} =
-                $conversation_obj->to_data();
-        }
+        _process_conversations($context, $ws, $runner, $since_ts, $db,
+                               $self->{'write_cb'}, $conversation_map,
+                               'receive_messages',
+                               \@new_conversations);
     }
 
-    @conversation_objs = ();
-    for my $conversation (@sorted_conversations,
-                          @new_conversations) {
-        my $data = $db->{$ws_name}->{$conversation} || {};
-        my $conversation_obj = App::Paws::Conversation->new(
-            context => $context,
-            workspace => $ws,
-            write_cb => $self->{'write_cb'},
-            name => $conversation,
-            id => $conversation_map->{$conversation},
-            data => $data
-        );
-        $conversation_obj->receive_threads($since_ts);
-        push @conversation_objs, $conversation_obj;
-    }
-    while (not $runner->poke()) {
-        sleep(0.01);
-    }
-    for my $conversation_obj (@conversation_objs) {
-        my $name = $conversation_obj->{'name'};
-        $db->{$ws_name}->{$name} =
-            $conversation_obj->to_data();
-    }
+    _process_conversations($context, $ws, $runner, $since_ts, $db,
+                           $self->{'write_cb'}, $conversation_map,
+                           'receive_threads',
+                           [@sorted_conversations,
+                            @new_conversations]);
 
-    use Data::Dumper;
-    #print Dumper($db);
+    $db->{'conversation-map'} = $conversation_map;
 
     write_file($path, encode_json($db));
 }
@@ -201,7 +178,8 @@ sub run
     my $error = $@;
     $lock->unlock();
     if ($error) {
-        die $error;
+        print STDERR "Unable to receive messages: $error\n";
+        return;
     }
     return 1;
 }

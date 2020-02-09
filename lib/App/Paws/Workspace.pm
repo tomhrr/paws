@@ -68,6 +68,11 @@ sub name_to_user_id
     return $user_map->{$name};
 }
 
+sub conversations
+{
+    return $_[0]->{'conversations'};
+}
+
 sub conversation_to_name
 {
     my ($self, $conversation) = @_;

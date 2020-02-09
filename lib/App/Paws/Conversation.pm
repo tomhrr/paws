@@ -52,7 +52,7 @@ sub _process_response
     }
     my $data = decode_json($res->content());
     if ($data->{'error'}) {
-        print STDERR "Error on process response: ".
+        print STDERR "Error in response: ".
                      $res->as_string()."\n";
         return;
     }
@@ -207,7 +207,12 @@ sub receive_messages
     }
 
     if ($ws->modification_window() and $first_ts) {
-        $self->_receive_modifications();
+        eval {
+            $self->_receive_modifications();
+        };
+        if (my $error = $@) {
+            print STDERR $error."\n";
+        }
     }
 
     my $history_req = $ws->get_history_request($id, $last_ts);
@@ -232,8 +237,8 @@ sub receive_messages
                 my $entity = $message->to_entity($first_ts, $first_ts);
                 $write_cb->($entity);
                 $deliveries->{$ts} = 1;
-                if ($ts > $self->{'last_ts'}) {
-                    $self->{'last_ts'} = $ts;
+                if ($ts > $last_ts) {
+                    $last_ts = $ts;
                 }
             }
 
@@ -246,6 +251,7 @@ sub receive_messages
         if (my $error = $@) {
             print STDERR $error."\n";
         }
+        $self->{'last_ts'} = $last_ts;
     });
 
     return 1;
@@ -386,16 +392,18 @@ sub receive_threads
                                                   $name, $_) }
                         @{$data->{'messages'}};
                 for my $message (@messages) {
-                    if ($message->ts() eq $thread_ts) {
+                    my $ts = $message->ts();
+                    if ($ts eq $thread_ts) {
                         next;
                     }
                     my $entity = $message->to_entity($first_ts, $thread_ts);
                     $write_cb->($entity);
-                    $deliveries->{$message->ts()} = 1;
-                    if ($message->ts() > $last_ts) {
-                        $last_ts = $message->ts();
+                    $deliveries->{$ts} = 1;
+                    if ($ts > $last_ts) {
+                        $last_ts = $ts;
                     }
                 }
+
                 if ($data->{'has_more'}) {
                     $replies_req =
                         $ws->get_replies_request($id, $thread_ts, $last_ts);
