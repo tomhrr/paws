@@ -7,7 +7,8 @@ use Encode;
 use HTML::Entities qw(decode_entities);
 use HTTP::Request;
 use MIME::Entity;
-use POSIX qw(strftime);
+
+use App::Paws::Utils qw(get_mail_date);
 
 sub new
 {
@@ -123,11 +124,6 @@ sub _add_attachment
     return 1;
 }
 
-sub _get_mail_date
-{
-    return strftime("%a, %d %b %Y %H:%M:%S %z", localtime($_[0]));
-}
-
 sub to_entity
 {
     my ($self, $first_ts, $thread_ts, $reply_to_id) = @_;
@@ -159,7 +155,7 @@ sub to_entity
     my $message_id = $self->id();
 
     my $entity = MIME::Entity->build(
-        Date         => _get_mail_date($ts),
+        Date         => get_mail_date($ts),
         From         => "$from_user\@$ws_domain_name",
         To           => $context->user_email(),
         Subject      => "Message from $conversation".
@@ -220,7 +216,7 @@ sub to_delete_entity
 
     my $time = time();
     my $entity = MIME::Entity->build(
-        Date          => _get_mail_date($time),
+        Date          => get_mail_date($time),
         From          => "paws-admin\@$ws_domain_name",
         To            => $context->user_email(),
         Subject       => "Message from $conversation (deleted)",

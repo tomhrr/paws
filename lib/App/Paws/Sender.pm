@@ -21,6 +21,7 @@ use Sys::Hostname;
 use URI;
 
 use App::Paws::Lock;
+use App::Paws::Utils qw(get_mail_date);
 
 my $MAX_FAILURE_COUNT = 5;
 
@@ -33,11 +34,6 @@ sub new
     return $self;
 }
 
-sub _get_mail_date
-{
-    return strftime("%a, %d %b %Y %H:%M:%S %z", localtime($_[0]));
-}
-
 sub _write_bounce
 {
     my ($self, $message_id, $error_message) = @_;
@@ -47,7 +43,7 @@ sub _write_bounce
     $error_message ||= 'no additional error detail provided';
 
     my $fn = time().'.'.$$.'.'.int(rand(1000000));
-    my $date = _get_mail_date(time());
+    my $date = get_mail_date(time());
     my $domain = $context->domain_name();
     my $to = $context->user_email();
     write_file($bounce_dir.'/tmp/'.$fn, <<EOF);
