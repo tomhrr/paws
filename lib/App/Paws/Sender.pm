@@ -3,7 +3,6 @@ package App::Paws::Sender;
 use warnings;
 use strict;
 
-use Data::Dumper;
 use Digest::MD5 qw(md5_hex);
 use Fcntl qw(O_CREAT O_EXCL);
 use File::Slurp qw(read_file write_file);
@@ -65,108 +64,102 @@ sub _send_queued_single
     my ($self, $entity) = @_;
 
     my $context = $self->{'context'};
-    my $ua = $context->ua();
+    my $ua      = $context->ua();
+    my $runner  = $context->runner();
 
-    my $to = $entity->head()->decode()->get('To');
-    if ($to =~ /</) {
-        $to =~ s/.*<(.*)>.*/$1/g;
-    }
-    chomp $to;
-    my $cc = $entity->head()->decode()->get('Cc') || '';
-    if ($cc =~ /</) {
-        $cc =~ s/.*<(.*)>.*/$1/g;
-    }
-    chomp $cc;
+    my @tos =
+        map { s/.*<(.*)>.*/$1/g; chomp; $_ }
+            split /\s*,\s*/, ($entity->head()->decode()->get('To') || '');
+
+    my @ccs =
+        map { s/.*<(.*)>.*/$1/g; chomp; $_ }
+            split /\s*,\s*/, ($entity->head()->decode()->get('Cc') || '');
+
     my $message_id = $entity->head()->decode()->get('Message-ID');
 
-    my $token;
     my $ws;
     my $thread_ts;
     my $base = $context->domain_name();
-
     my $conversation_id;
-    if ($to !~ /,/) {
+
+    if (@tos == 1) {
+        my $to = $tos[0];
         my ($local, $domain) = split /@/, $to;
         my ($type, $name) = split /\s*\/\s*/, $local;
-
-        if ($domain !~ /^(.*)\.$base$/) {
-            $self->_write_bounce($message_id,
-                                    "message has non-Slack recipient: ".
-                                    $to);
-            return 1;
-        }
-        my $ws_name = $1;
-        if (not $context->{'workspaces'}->{$ws_name}) {
-            $self->_write_bounce($message_id,
-                                    "workspace '$ws_name' does ".
-                                    "not exist");
-            return 1;
-        }
-
-        $ws = $context->{'workspaces'}->{$ws_name};
-        my $req = $ws->get_conversations_request();
-        my $data;
-        my $runner = $self->{'context'}->runner();
-        $runner->add('conversations.list',
-                    $req, sub {
-                        my ($self, $res, $fn) = @_;
-                        if (not $res->is_success()) {
-                            die Dumper($res);
-                        }
-                        my $tdata = decode_json($res->content());
-                        if ($tdata->{'error'}) {
-                            die Dumper($tdata);
-                        }
-                        if (not $data) {
-                            $data->{'channels'} = $tdata->{'channels'};
-                        } else {
-                            push @{$data->{'channels'}}, @{$tdata->{'channels'}};
-                        }
-                        if ($tdata->{'response_metadata'}->{'next_cursor'}) {
-                            my $req = $ws->standard_get_request_only(
-                                '/conversations.list',
-                                { cursor => $tdata->{'response_metadata'}
-                                                ->{'next_cursor'},
-                                types => 'public_channel,private_channel,mpim,im' }
-                            );
-                            $runner->add('conversations.list', $req, $fn);
-                        }
-                    });
-        while (not $runner->poke()) {
-            sleep(0.01);
-        }
-
         if ($name =~ /\+/) {
             ($thread_ts) = ($name =~ /.*\+(.*)/);
             $name =~ s/\+.*//;
         }
 
-        $token = $ws->{'token'};
+        if ($domain !~ /^(.*)\.$base$/) {
+            $self->_write_bounce($message_id,
+                                 "Message has non-Slack recipient: $to");
+            return 1;
+        }
+        my $ws_name = $1;
+        $ws = $context->workspaces()->{$ws_name};
+        if (not $ws) {
+            $self->_write_bounce($message_id,
+                                 "Workspace '$ws_name' does not exist");
+            return 1;
+        }
 
-        my $conversations = $data->{'channels'};
+        my $req = $ws->get_conversations_request();
+        my @channels;
+        $runner->add('conversations.list', $req, sub {
+            my ($self, $res, $fn) = @_;
+
+            if (not $res->is_success()) {
+                print STDERR "Unable to process response: ".
+                             $res->as_string()."\n";
+                return;
+            }
+            my $data = decode_json($res->content());
+            if ($data->{'error'}) {
+                print STDERR "Error in response: ".
+                             $res->as_string()."\n";
+                return;
+            }
+
+            push @channels, @{$data->{'channels'}};
+
+            if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
+                my $req = $ws->standard_get_request_only(
+                    '/conversations.list',
+                    { cursor => $cursor,
+                      types  => 'public_channel,private_channel,mpim,im' }
+                );
+                $runner->add('conversations.list', $req, $fn);
+            }
+        });
+        while (not $runner->poke()) {
+            sleep(0.01);
+        }
+
         my %conversation_map =
             map { $ws->conversation_to_name($_) => $_->{'id'} }
-                @{$conversations};
+                @channels;
         $conversation_id =
             $conversation_map{$local}
                 || $conversation_map{"im/$local"};
     }
+
     if (not $conversation_id) {
-        my @recipients = ((split /\s*,\s*/, $to), (split /\s*,\s*/, $cc));
+        my @recipients = (@tos, @ccs);
         my @usernames;
         my @ws_names;
         for my $recipient (@recipients) {
             my ($username, $domain) = split /@/, $recipient;
             if ($domain !~ /^(.*)\.$base$/) {
                 $self->_write_bounce($message_id,
-                                     "message has non-Slack recipient: ".
+                                     "Message has non-Slack recipient: ".
                                      $recipient);
                 return 1;
             }
             my $ws_name = $1;
-            if (not $context->{'workspaces'}->{$ws_name}) {
+            if (not $context->workspaces()->{$ws_name}) {
                 $self->_write_bounce($message_id,
-                                     "workspace '$ws_name' does ".
+                                     "Workspace '$ws_name' does ".
                                      "not exist");
                 return 1;
             }
@@ -176,26 +169,23 @@ sub _send_queued_single
         @ws_names = uniq @ws_names;
         if (@ws_names > 1) {
             $self->_write_bounce($message_id,
-                                "unable to send message to multiple ".
-                                "workspaces");
+                                 "Unable to send message to multiple ".
+                                 "workspaces");
             return 1;
         }
-        my $ws_name = $ws_names[0];
-        $ws = $context->{'workspaces'}->{$ws_name};
-        $token = $ws->{'token'};
+        $ws = $context->workspaces()->{$ws_names[0]};
         my @user_ids;
         for my $username (@usernames) {
             my $user_id = $ws->name_to_user_id($username);
             if (not $user_id) {
                 $self->_write_bounce($message_id,
-                                    "invalid username: '$username'");
+                                     "Invalid username: '$username'");
                 return 1;
             }
             push @user_ids, $user_id;
         }
         @user_ids = uniq @user_ids;
         my $user_str = join ',', @user_ids;
-        my $channel_name = md5_hex($user_str);
 
         my %post_data = (
             users => $user_str
@@ -203,7 +193,7 @@ sub _send_queued_single
 
         my $req = HTTP::Request->new();
         $req->header('Content-Type'  => 'application/json; charset=UTF-8');
-        $req->header('Authorization' => 'Bearer '.$token);
+        $req->header('Authorization' => 'Bearer '.$ws->token());
         $req->uri($context->slack_base_url().'/conversations.open');
         $req->method('POST');
         $req->content(encode_json(\%post_data));
@@ -211,16 +201,16 @@ sub _send_queued_single
         my $res = $ua->request($req);
         if (not $res->is_success()) {
             $self->_write_bounce($message_id,
-                                "unable to create new conversation: ".
-                                $res->status_line());
+                                 "Unable to create new conversation: ".
+                                 $res->as_string());
             return 1;
         }
         my $data = decode_json($res->decoded_content());
         if (not $data->{'ok'}) {
             $self->_write_bounce($message_id,
-                                "unable to create new conversation: ".
-                                $res->decoded_content().": ".
-                                encode_json(\%post_data));
+                                 "Unable to create new conversation: ".
+                                 $res->as_string().": ".
+                                 encode_json(\%post_data));
             return 1;
         }
         $conversation_id = $data->{'channel'}->{'id'};
@@ -228,38 +218,40 @@ sub _send_queued_single
 
     if (not $conversation_id) {
         $self->_write_bounce($message_id,
-                             "unable to find conversation ID");
+                             "Unable to find conversation ID");
         return 1;
     }
 
     my $text_data;
-    my @sreqs;
-    my @fts;
+    my @attachment_reqs;
+    my @temp_files;
     if ($entity->parts() > 0) {
         for (my $i = 0; $i < $entity->parts(); $i++) {
-            my $subentity = $entity->parts($i);
-            if (($subentity->head()->get('Content-Type') =~ /^text\/plain;?/)
+            my $part = $entity->parts($i);
+            if (($part->head()->get('Content-Type') =~ /^text\/plain;?/)
                     and not $text_data) {
-                $text_data = $subentity->bodyhandle()->as_string();
+                $text_data = $part->bodyhandle()->as_string();
                 next;
             }
-            my $fn = $subentity->head()->recommended_filename();
-            $fn =~ s/\?.*//;
-            my $ft = File::Temp->new();
-            print $ft $subentity->bodyhandle()->as_string();
-            $ft->flush();
-            push @fts, $ft;
-            my $uri = URI->new($context->{'slack_base_url'}.'/files.upload');
-            my $sreq = POST($uri,
-                            Content_Type => 'form-data',
-                            Content      => [
-                                file     => [$ft->filename()],
-                                filename => $fn,
-                                title    => $fn,
-                                token    => $token,
-                                channels => $conversation_id
-                            ]);
-            push @sreqs, $sreq;
+
+            my $filename = $part->head()->recommended_filename();
+            $filename =~ s/\?.*//;
+            my $temp_file = File::Temp->new();
+            print $temp_file $part->bodyhandle()->as_string();
+            $temp_file->flush();
+            push @temp_files, $temp_file;
+            my $uri = URI->new($context->slack_base_url().'/files.upload');
+            my $attachment_req =
+                POST($uri,
+                     Content_Type => 'form-data',
+                     Content      => [
+                         file     => [$temp_file->filename()],
+                         filename => $filename,
+                         title    => $filename,
+                         token    => $ws->token(),
+                         channels => $conversation_id
+                     ]);
+            push @attachment_reqs, $attachment_req;
         }
     } else {
         $text_data = $entity->bodyhandle()->as_string();
@@ -274,7 +266,7 @@ sub _send_queued_single
 
     my $req = HTTP::Request->new();
     $req->header('Content-Type'  => 'application/json');
-    $req->header('Authorization' => 'Bearer '.$token);
+    $req->header('Authorization' => 'Bearer '.$ws->token());
     $req->uri($context->slack_base_url().'/chat.postMessage');
     $req->method('POST');
     $req->content(encode_json(\%post_data));
@@ -284,35 +276,35 @@ sub _send_queued_single
         my $client_warning =
             $res->headers()->header('Client-Warning');
         if ($client_warning eq 'Internal response') {
-            warn "Unable to send message, will retry later: ".
-                 $res->status_line();
+            print STDERR "Unable to send message, will retry later: ".
+                         $res->status_line()."\n";
             return;
         } else {
             $self->_write_bounce($message_id,
-                                 $res->status_line());
+                                 $res->as_string());
             return 1;
         }
     }
     my $data = decode_json($res->decoded_content());
     if (not $data->{'ok'}) {
         $self->_write_bounce($message_id,
-                             $res->decoded_content());
+                             $res->as_string());
         return 1;
     }
 
-    for my $r (@sreqs) {
-        my $res = $ua->request($r);
+    for my $attachment_req (@attachment_reqs) {
+        my $res = $ua->request($attachment_req);
         if (not $res->is_success()) {
-            warn "Unable to send attachment, bouncing: ".
-                 $res->status_line();
+            print STDERR "Unable to send attachment, bouncing: ".
+                         $res->as_string()."\n";
             $self->_write_bounce($message_id,
-                                 $res->status_line());
+                                 $res->as_string());
             return 1;
         }
         my $data = decode_json($res->decoded_content());
         if (not $data->{'ok'}) {
             $self->_write_bounce($message_id,
-                                 $res->decoded_content());
+                                 $res->as_string());
             return 1;
         }
     }
@@ -328,21 +320,21 @@ sub submit
     my $domain_name = $context->domain_name();
     my @lines = <$fh>;
 
-    my $ft = File::Temp->new(UNLINK => 0);
-    print $ft @lines;
-    $ft->flush();
-    $ft->seek(0, 0);
+    my $temp_file = File::Temp->new(UNLINK => 0);
+    print $temp_file @lines;
+    $temp_file->flush();
+    $temp_file->seek(0, 0);
 
     my $parser = MIME::Parser->new();
     my $parser_dir = tempdir();
     $parser->output_under($parser_dir);
-    my $entity = $parser->parse($ft);
+    my $entity = $parser->parse($temp_file);
 
     my $to = $entity->head()->get('To');
     if ($to !~ /$domain_name/) {
         my $fallback_sendmail = $self->{'fallback_sendmail'};
         my $res = system("$fallback_sendmail ".
-                         (join ' ', @{$args})." < ".$ft->filename());
+                         (join ' ', @{$args})." < ".$temp_file->filename());
         return (not $res);
     }
 
@@ -357,17 +349,16 @@ sub send_queued
     my ($self) = @_;
 
     my $context = $self->{'context'};
-    my $ua = $context->ua();
-    my $domain_name = $context->domain_name();
-    my $to = $context->user_email();
+    my $ua      = $context->ua();
+    my $to      = $context->user_email();
 
-    my $queue_dir = $context->queue_directory();
+    my $queue_dir  = $context->queue_directory();
     my $queue_lock = $queue_dir.'/lock';
-    my $lock = App::Paws::Lock->new($queue_lock);
+    my $lock       = App::Paws::Lock->new($queue_lock);
 
     my $path = $context->db_directory().'/sender';
     if (not -e $path) {
-        write_file($path, '{}');
+        write_file($path, encode_json({ failures => {} }));
     }
     my $db = decode_json(read_file($path));
 
@@ -375,15 +366,15 @@ sub send_queued
         my $dh;
         opendir $dh, $queue_dir or die $!;
         while (my $entry = readdir($dh)) {
-            if ($entry eq 'lock') {
+            if (($entry eq '.') or ($entry eq '..') or ($entry eq 'lock')) {
                 next;
             }
-            $entry = $queue_dir.'/'.$entry;
-            if (-f $entry) {
+            my $entry_path = $queue_dir.'/'.$entry;
+            if (-f $entry_path) {
                 my $parser = MIME::Parser->new();
                 my $parser_dir = tempdir();
                 $parser->output_under($parser_dir);
-                open my $fh, '<', $entry or die $!;
+                open my $fh, '<', $entry_path or die $!;
                 my $entity = $parser->parse($fh);
                 close $fh;
 
@@ -395,14 +386,15 @@ sub send_queued
                     if ($db->{'failures'}->{$message_id} >= $MAX_FAILURE_COUNT) {
                         $self->_write_bounce(
                             $message_id,
-                            'failed to deliver message '.
+                            'Failed to deliver message '.
                             $db->{'failures'}->{$path}.' times, '.
-                            'giving up'
+                            'giving up (message: '.
+                            $entity->as_string().')'
                         );
-                        unlink $entry;
+                        unlink $entry_path;
                     }
                 } else {
-                    unlink $entry;
+                    unlink $entry_path;
                 }
             }
         }
@@ -411,7 +403,8 @@ sub send_queued
     my $error = $@;
     $lock->unlock();
     if ($error) {
-        die $error;
+        print STDERR "Unable to process queue: $error\n";
+        return;
     }
 
     write_file($path, encode_json($db));

@@ -113,7 +113,7 @@ my @bounces = `find $bounce_dir -type f`;
 is(@bounces, 1, 'Got bounce');
 chomp $bounces[0];
 my $content = read_file($bounces[0]);
-like($content, qr/workspace 'example' does not exist/,
+like($content, qr/Workspace 'example' does not exist/,
     'Got correct message in bounce');
 
 $server->shutdown();

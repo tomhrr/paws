@@ -122,7 +122,7 @@ my @bounces = `find $bounce_dir -type f`;
 is(@bounces, 1, 'Got bounce');
 chomp $bounces[0];
 my $content = read_file($bounces[0]);
-like($content, qr/unable to send message to multiple workspaces/,
+like($content, qr/Unable to send message to multiple workspaces/,
     'Got correct message in bounce');
 
 $server->shutdown();

@@ -86,4 +86,9 @@ sub db_directory
     return $_[0]->{'db_directory'};
 }
 
+sub workspaces
+{
+    return $_[0]->{'workspaces'};
+}
+
 1;
