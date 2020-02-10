@@ -59,6 +59,123 @@ EOF
     return 1;
 }
 
+sub _get_conversation_map
+{
+    my ($runner, $ws) = @_;
+
+    my $req = $ws->get_conversations_request();
+    my @channels;
+    $runner->add('conversations.list', $req, sub {
+        my ($self, $res, $fn) = @_;
+
+        if (not $res->is_success()) {
+            my $res_str = $res->as_string();
+            chomp $res_str;
+            print STDERR "Unable to process response: $res_str\n";
+            return;
+        }
+        my $data = decode_json($res->content());
+        if ($data->{'error'}) {
+            my $res_str = $res->as_string();
+            chomp $res_str;
+            print STDERR "Error in response: $res_str\n";
+            return;
+        }
+
+        push @channels, @{$data->{'channels'}};
+
+        if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
+            my $req = $ws->standard_get_request_only(
+                '/conversations.list',
+                { cursor => $cursor,
+                  types  => 'public_channel,private_channel,mpim,im' }
+            );
+            $runner->add('conversations.list', $req, $fn);
+        }
+    });
+    while (not $runner->poke()) {
+        sleep(0.01);
+    }
+
+    my %conversation_map =
+        map { $ws->conversation_to_name($_) => $_->{'id'} }
+            @channels;
+
+    return \%conversation_map;
+}
+
+sub _create_conversation
+{
+    my ($self, $ws, $message_id, $user_ids) = @_;
+
+    my $context = $self->{'context'};
+    my %post_data = (
+        users => (join ',', @{$user_ids})
+    );
+
+    my $req = HTTP::Request->new();
+    $req->header('Content-Type'  => 'application/json; charset=UTF-8');
+    $req->header('Authorization' => 'Bearer '.$ws->token());
+    $req->uri($context->slack_base_url().'/conversations.open');
+    $req->method('POST');
+    $req->content(encode_json(\%post_data));
+
+    my $ua = $context->ua();
+    my $res = $ua->request($req);
+    if (not $res->is_success()) {
+        $self->_write_bounce($message_id,
+                             "Unable to create new conversation: ".
+                             $res->as_string());
+        return;
+    }
+    my $data = decode_json($res->decoded_content());
+    if (not $data->{'ok'}) {
+        $self->_write_bounce($message_id,
+                             "Unable to create new conversation: ".
+                             $res->as_string().": ".
+                             encode_json(\%post_data));
+        return;
+    }
+    my $conversation_id = $data->{'channel'}->{'id'};
+    return $conversation_id;
+}
+
+sub _get_conversation_for_single_recipient
+{
+    my ($self, $to, $message_id) = @_;
+
+    my $context = $self->{'context'};
+    my ($local, $domain) = split /@/, $to;
+    my ($type, $name) = split /\s*\/\s*/, $local;
+    my $thread_ts;
+    if ($name =~ /\+/) {
+        ($thread_ts) = ($name =~ /.*\+(.*)/);
+        $name =~ s/\+.*//;
+    }
+
+    my $base = $context->domain_name();
+    if ($domain !~ /^(.*)\.$base$/) {
+        $self->_write_bounce($message_id,
+                             "Message has non-Slack recipient: $to");
+        return;
+    }
+    my $ws_name = $1;
+    my $ws = $context->workspaces()->{$ws_name};
+    if (not $ws) {
+        $self->_write_bounce($message_id,
+                             "Workspace '$ws_name' does not exist");
+        return;
+    }
+
+    my $runner = $context->runner();
+    my %conversation_map = %{_get_conversation_map($runner, $ws)};
+    my $conversation_id =
+        $conversation_map{"$type/$name"}
+            || $conversation_map{"im/$name"};
+
+    return ($ws, $conversation_id, $thread_ts);
+}
+
 sub _send_queued_single
 {
     my ($self, $entity) = @_;
@@ -82,68 +199,14 @@ sub _send_queued_single
     my $base = $context->domain_name();
     my $conversation_id;
 
-    if (@tos == 1) {
-        my $to = $tos[0];
-        my ($local, $domain) = split /@/, $to;
-        my ($type, $name) = split /\s*\/\s*/, $local;
-        if ($name =~ /\+/) {
-            ($thread_ts) = ($name =~ /.*\+(.*)/);
-            $name =~ s/\+.*//;
-        }
-
-        if ($domain !~ /^(.*)\.$base$/) {
-            $self->_write_bounce($message_id,
-                                 "Message has non-Slack recipient: $to");
-            return 1;
-        }
-        my $ws_name = $1;
-        $ws = $context->workspaces()->{$ws_name};
+    if ((@tos == 1) and not @ccs) {
+        ($ws, $conversation_id, $thread_ts) =
+            $self->_get_conversation_for_single_recipient(
+                $tos[0], $message_id
+            );
         if (not $ws) {
-            $self->_write_bounce($message_id,
-                                 "Workspace '$ws_name' does not exist");
             return 1;
         }
-
-        my $req = $ws->get_conversations_request();
-        my @channels;
-        $runner->add('conversations.list', $req, sub {
-            my ($self, $res, $fn) = @_;
-
-            if (not $res->is_success()) {
-                my $res_str = $res->as_string();
-                chomp $res_str;
-                print STDERR "Unable to process response: $res_str\n";
-                return;
-            }
-            my $data = decode_json($res->content());
-            if ($data->{'error'}) {
-                my $res_str = $res->as_string();
-                chomp $res_str;
-                print STDERR "Error in response: $res_str\n";
-                return;
-            }
-
-            push @channels, @{$data->{'channels'}};
-
-            if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
-                my $req = $ws->standard_get_request_only(
-                    '/conversations.list',
-                    { cursor => $cursor,
-                      types  => 'public_channel,private_channel,mpim,im' }
-                );
-                $runner->add('conversations.list', $req, $fn);
-            }
-        });
-        while (not $runner->poke()) {
-            sleep(0.01);
-        }
-
-        my %conversation_map =
-            map { $ws->conversation_to_name($_) => $_->{'id'} }
-                @channels;
-        $conversation_id =
-            $conversation_map{"$type/$name"}
-                || $conversation_map{"im/$name"};
     }
 
     if (not $conversation_id) {
@@ -187,35 +250,11 @@ sub _send_queued_single
             push @user_ids, $user_id;
         }
         @user_ids = uniq @user_ids;
-        my $user_str = join ',', @user_ids;
-
-        my %post_data = (
-            users => $user_str
-        );
-
-        my $req = HTTP::Request->new();
-        $req->header('Content-Type'  => 'application/json; charset=UTF-8');
-        $req->header('Authorization' => 'Bearer '.$ws->token());
-        $req->uri($context->slack_base_url().'/conversations.open');
-        $req->method('POST');
-        $req->content(encode_json(\%post_data));
-
-        my $res = $ua->request($req);
-        if (not $res->is_success()) {
-            $self->_write_bounce($message_id,
-                                 "Unable to create new conversation: ".
-                                 $res->as_string());
+        $conversation_id = $self->_create_conversation($ws, $message_id,
+                                                       \@user_ids);
+        if (not $conversation_id) {
             return 1;
         }
-        my $data = decode_json($res->decoded_content());
-        if (not $data->{'ok'}) {
-            $self->_write_bounce($message_id,
-                                 "Unable to create new conversation: ".
-                                 $res->as_string().": ".
-                                 encode_json(\%post_data));
-            return 1;
-        }
-        $conversation_id = $data->{'channel'}->{'id'};
     }
 
     if (not $conversation_id) {
