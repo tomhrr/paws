@@ -81,14 +81,16 @@ sub _run_internal
     $runner->add('conversations.list', $req, sub {
         my ($self, $res, $fn) = @_;
         if (not $res->is_success()) {
-            print STDERR "Unable to process response: ".
-                         $res->as_string()."\n";
+            my $res_str = $res->as_string();
+            chomp $res_str;
+            print STDERR "Unable to process response: $res_str\n";
             return;
         }
         my $data = decode_json($res->content());
         if ($data->{'error'}) {
-            print STDERR "Error in response: ".
-                         $res->as_string()."\n";
+            my $res_str = $res->as_string();
+            chomp $res_str;
+            print STDERR "Error in response: $res_str\n";
             return;
         }
 

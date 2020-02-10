@@ -110,14 +110,16 @@ sub _send_queued_single
             my ($self, $res, $fn) = @_;
 
             if (not $res->is_success()) {
-                print STDERR "Unable to process response: ".
-                             $res->as_string()."\n";
+                my $res_str = $res->as_string();
+                chomp $res_str;
+                print STDERR "Unable to process response: $res_str\n";
                 return;
             }
             my $data = decode_json($res->content());
             if ($data->{'error'}) {
-                print STDERR "Error in response: ".
-                             $res->as_string()."\n";
+                my $res_str = $res->as_string();
+                chomp $res_str;
+                print STDERR "Error in response: $res_str\n";
                 return;
             }
 
@@ -140,8 +142,8 @@ sub _send_queued_single
             map { $ws->conversation_to_name($_) => $_->{'id'} }
                 @channels;
         $conversation_id =
-            $conversation_map{$local}
-                || $conversation_map{"im/$local"};
+            $conversation_map{"$type/$name"}
+                || $conversation_map{"im/$name"};
     }
 
     if (not $conversation_id) {
