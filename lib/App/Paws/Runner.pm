@@ -30,15 +30,10 @@ sub _init_tag
     }
 
     $self->{'tags'}->{$tag} = {
-        id            => 1,
-        async         => HTTP::Async->new(),
-        pending       => [],
-        incomplete    => {},
-        id_to_fn      => {},
-        task_id_to_id => {},
-        task_id_to_fn => {},
-        completed     => {},
-        last_added    => 0,
+        async      => HTTP::Async->new(),
+        pending    => [],
+        incomplete => {},
+        last_added => 0,
     };
 
     return 1;
@@ -70,37 +65,32 @@ sub poke
     my ($self, $tag) = @_;
 
     my @tags = $tag ? ($tag) : (keys %{$self->{'tags'}});
-    start_again:
+
     my $finished = 1;
     for my $tag (@tags) {
         my $tag_data = $self->{'tags'}->{$tag};
-        my ($async, $pending, $incomplete, $last_added, $completed,
-            $task_id_to_id, $task_id_to_fn) =
-            @{$tag_data}{qw(async pending incomplete last_added completed
-                            task_id_to_id task_id_to_fn)};
+        my ($async, $pending, $incomplete, $last_added) =
+            @{$tag_data}{qw(async pending incomplete last_added)};
         my $interval = (60 / ($self->{'rates'}->{$tag} || 60));
         my $time = time();
         if (@{$pending} and ($time > ($last_added + $interval))) {
-            my $p = shift @{$pending};
-	    my ($req, $fn, $id) = @{$p};
+            my $next_pending = shift @{$pending};
+	    my ($req, $fn) = @{$next_pending};
             my $task_id = $async->add($req);
-            $incomplete->{$task_id} = $p;
+            $incomplete->{$task_id} = $next_pending;
             $tag_data->{'last_added'} = $time;
             $async->poke();
-            $task_id_to_id->{$task_id} = $id;
-            $task_id_to_fn->{$task_id} = $fn;
         }
         while (my ($res, $task_id) = $async->next_response()) {
             if ($res->code() == 429) {
                 $self->process_429($tag, $res);
-                goto start_again;
+                goto &poke;
             }
 
-            my $fn = $task_id_to_fn->{$task_id};
-            my $res2 = $fn->($self, $res, $fn);
+            my $fn = $incomplete->{$task_id}->[1];
+            $fn->($self, $res, $fn);
             delete $incomplete->{$task_id};
-            $completed->{$task_id_to_id->{$task_id}} = $res2;
-            goto start_again;
+            goto &poke;
         }
         if (@{$pending} or $async->not_empty()) {
             $finished = 0;
@@ -116,25 +106,10 @@ sub add
 
     $self->_init_tag($tag);
     my $tag_data = $self->{'tags'}->{$tag};
-    my $id = $tag_data->{'id'};
-    $tag_data->{'id'}++;
-    push @{$tag_data->{'pending'}},
-        [ $request, $fn, $id ];
+    push @{$tag_data->{'pending'}}, [ $request, $fn ];
     $self->poke();
 
-    return $id;
-}
-
-sub get_result
-{
-    my ($self, $tag, $id) = @_;
-
-    my $completed = $self->{'tags'}->{$tag}->{'completed'};
-    if ($completed->{$id}) {
-        return $completed->{$id};
-    }
-
-    return;
+    return 1;
 }
 
 1;

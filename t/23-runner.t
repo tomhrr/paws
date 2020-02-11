@@ -18,7 +18,7 @@ use MIME::Parser;
 use Time::HiRes qw(sleep);
 use YAML;
 
-use Test::More tests => 2;
+use Test::More tests => 1;
 
 my $server = App::Paws::Test::Server->new();
 $server->run();
@@ -102,10 +102,6 @@ while (not $runner->poke()) {
     sleep(0.1);
 }
 is($count, 10, 'Finished 10 additional jobs');
-
-my $second_id = $runner->get_result('conversations.list', $id);
-my $last_result = $runner->get_result('conversations.list', $second_id);
-is($last_result, 'done', 'Got correct last result');
 
 $server->shutdown();
 
