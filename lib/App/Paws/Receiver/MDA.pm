@@ -3,19 +3,9 @@ package App::Paws::Receiver::MDA;
 use warnings;
 use strict;
 
-use Encode;
-use File::Basename qw(basename);
-use File::Slurp qw(read_file write_file);
-use File::Temp qw(tempdir);
-use HTML::Entities qw(decode_entities);
-use HTTP::Request;
-use JSON::XS qw(decode_json encode_json);
-use List::Util qw(min minstr first);
-use MIME::Entity;
-use POSIX qw(strftime);
-use Sys::Hostname;
-use App::Paws::Receiver;
 use IPC::Run3;
+
+use App::Paws::Receiver;
 
 sub new
 {
@@ -54,12 +44,12 @@ sub run
             my $stderr;
             eval { run3([$cmd, @args], \$data, \undef, \$stderr); };
             if (my $error = $@) {
-                $stderr ||= "(no stderr output)"; 
+                $stderr ||= "(no stderr output)";
                 die "MDA execution failed: $stderr";
             }
             my $res = $?;
             if ($? != 0) {
-                $stderr ||= "(no stderr output)"; 
+                $stderr ||= "(no stderr output)";
                 die "MDA execution failed: $stderr";
             }
             if ($stderr) {

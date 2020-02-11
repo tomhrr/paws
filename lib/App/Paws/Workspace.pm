@@ -186,11 +186,17 @@ sub _init_users
         'users.list', $req, sub {
             my ($runner, $res, $fn) = @_;
             if (not $res->is_success()) {
-                die Dumper($res);
+                my $res_str = $res->as_string();
+                chomp $res_str;
+                print STDERR "Unable to process response: $res_str\n";
+                return;
             }
             my $data = decode_json($res->content());
             if ($data->{'error'}) {
-                die Dumper($data);
+                my $res_str = $res->as_string();
+                chomp $res_str;
+                print STDERR "Error in response: $res_str\n";
+                return;
             }
             my @users = @{$data->{'members'}};
             push @{$self->{'users'}}, @users;

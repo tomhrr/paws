@@ -3,17 +3,9 @@ package App::Paws::Receiver::maildir;
 use warnings;
 use strict;
 
-use Encode;
-use File::Basename qw(basename);
-use File::Slurp qw(read_file write_file);
-use File::Temp qw(tempdir);
-use HTML::Entities qw(decode_entities);
-use HTTP::Request;
-use JSON::XS qw(decode_json encode_json);
-use List::Util qw(min minstr first);
-use MIME::Entity;
-use POSIX qw(strftime);
+use File::Slurp qw(write_file);
 use Sys::Hostname;
+
 use App::Paws::Receiver;
 
 sub new

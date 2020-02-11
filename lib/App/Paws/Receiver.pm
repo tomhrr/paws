@@ -3,7 +3,6 @@ package App::Paws::Receiver;
 use warnings;
 use strict;
 
-use Data::Dumper;
 use File::Slurp qw(read_file write_file);
 use JSON::XS qw(decode_json encode_json);
 use List::MoreUtils qw(uniq);

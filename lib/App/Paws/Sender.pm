@@ -3,20 +3,13 @@ package App::Paws::Sender;
 use warnings;
 use strict;
 
-use Digest::MD5 qw(md5_hex);
-use Fcntl qw(O_CREAT O_EXCL);
 use File::Slurp qw(read_file write_file);
 use File::Temp qw(tempdir);
 use HTTP::Request;
 use HTTP::Request::Common qw(POST);
 use JSON::XS qw(decode_json encode_json);
-use List::Util qw(first);
 use List::MoreUtils qw(uniq);
-use LWP::UserAgent;
-use MIME::Entity;
 use MIME::Parser;
-use POSIX qw(strftime);
-use Sys::Hostname;
 use URI;
 
 use App::Paws::Lock;
@@ -176,6 +169,17 @@ sub _get_conversation_for_single_recipient
     return ($ws, $conversation_id, $thread_ts);
 }
 
+sub _process_emails
+{
+    my ($entity, $header) = @_;
+
+    my @emails =
+        map { s/.*<(.*)>.*/$1/g; chomp; $_ }
+            split /\s*,\s*/, ($entity->head()->decode()->get($header) || '');
+
+    return \@emails;
+}
+
 sub _send_queued_single
 {
     my ($self, $entity) = @_;
@@ -184,13 +188,8 @@ sub _send_queued_single
     my $ua      = $context->ua();
     my $runner  = $context->runner();
 
-    my @tos =
-        map { s/.*<(.*)>.*/$1/g; chomp; $_ }
-            split /\s*,\s*/, ($entity->head()->decode()->get('To') || '');
-
-    my @ccs =
-        map { s/.*<(.*)>.*/$1/g; chomp; $_ }
-            split /\s*,\s*/, ($entity->head()->decode()->get('Cc') || '');
+    my @tos = @{_process_emails($entity, 'To')};
+    my @ccs = @{_process_emails($entity, 'Cc')};
 
     my $message_id = $entity->head()->decode()->get('Message-ID');
 
