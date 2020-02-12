@@ -3,11 +3,9 @@ package App::Paws::Workspace;
 use warnings;
 use strict;
 
-use Data::Dumper;
 use File::Slurp qw(read_file write_file);
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
-use LWP::UserAgent;
 use Time::HiRes qw(sleep);
 
 our $LIMIT = 100;
@@ -16,9 +14,15 @@ sub new
 {
     my $class = shift;
     my %args = @_;
-    my $self = \%args;
-    $self->{'users_loaded'} = 0;
-    $self->{'users_retrieved'} = 0;
+
+    my $self = {
+        (map { $_ => $args{$_} }
+            qw(context name token conversations modification_window
+               thread_expiry)),
+        users_loaded    => 0,
+        users_retrieved => 0,
+    };
+
     bless $self, $class;
     return $self;
 }

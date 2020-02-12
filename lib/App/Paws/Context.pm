@@ -3,6 +3,8 @@ package App::Paws::Context;
 use warnings;
 use strict;
 
+use LWP::UserAgent;
+
 use App::Paws::Runner;
 use App::Paws::Workspace;
 
@@ -42,7 +44,9 @@ sub new
               my $ws = App::Paws::Workspace->new(
                   context => $self,
                   name    => $ws_name,
-                  %{$ws_spec}
+                  (map { $_ => $ws_spec->{$_} }
+                      qw(token conversations modification_window
+                         thread_expiry))
               );
               $ws->_init_users();
               $ws_name => $ws }

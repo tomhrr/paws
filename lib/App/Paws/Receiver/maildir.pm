@@ -12,9 +12,12 @@ sub new
 {
     my $class = shift;
     my %args = @_;
-    my $self = \%args;
-    $self->{'workspace'} =
-        $self->{'context'}->{'workspaces'}->{$self->{'workspace'}};
+    my $self = {
+        context   => $args{'context'},
+        workspace => $args{'context'}->{'workspaces'}->{$args{'workspace'}},
+        name      => $args{'name'},
+        path      => $args{'path'},
+    };
     bless $self, $class;
     return $self;
 }
@@ -24,10 +27,6 @@ sub run
     my ($self, $counter, $since_ts) = @_;
 
     $counter ||= 1;
-
-    my $ws = $self->{'workspace'};
-    my $context = $self->{'context'};
-    my $name = $self->{'name'};
 
     my $receiver = App::Paws::Receiver->new(
         workspace => $self->{'workspace'},
