@@ -48,7 +48,7 @@ sub new
                       qw(token conversations modification_window
                          thread_expiry))
               );
-              $ws->_init_users();
+              $ws->users()->_init_users();
               $ws_name => $ws }
             keys %{$config->{'workspaces'}};
 

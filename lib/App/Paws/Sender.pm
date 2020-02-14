@@ -240,7 +240,7 @@ sub _send_queued_single
         $ws = $context->workspaces()->{$ws_names[0]};
         my @user_ids;
         for my $username (@usernames) {
-            my $user_id = $ws->name_to_user_id($username);
+            my $user_id = $ws->users()->name_to_user_id($username);
             if (not $user_id) {
                 $self->_write_bounce($message_id,
                                      "Invalid username: '$username'");

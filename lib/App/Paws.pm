@@ -103,8 +103,8 @@ sub aliases
     my @aliases;
     for my $ws_name (keys %{$context->{'workspaces'}}) {
         my $ws = $context->{'workspaces'}->{$ws_name};
-        $ws->retrieve_users();
-        my $user_list = $ws->get_user_list();
+        $ws->users()->retrieve_users();
+        my $user_list = $ws->users()->get_user_list();
         for my $user (@{$user_list}) {
             my ($real_name, $username) = @{$user};
             push @aliases,
