@@ -20,7 +20,6 @@ sub new
     my $self = {
         (map { $_ => $args{$_} }
             qw(context workspace)),
-        loading   => 0,
         retrieved => 0,
     };
 
@@ -45,7 +44,6 @@ sub _init_users
 
     if ((not $force_retrieve) and $db->{'users'}) {
         $self->{'users'} = $db->{'users'};
-        $self->{'loading'} = 0;
         return 1;
     }
     if ($self->{'retrieved'}) {
@@ -58,7 +56,6 @@ sub _init_users
         { limit => $LIMIT }
     );
 
-    $self->{'loading'} = 1;
     $self->{'users'} = [];
     $runner->add(
         'users.list', $req, sub {
@@ -96,7 +93,6 @@ sub _init_users
                                deleted   => $_->{'deleted'} } }
                         @{$self->{'users'}} ];
                 write_file($path, encode_json($db));
-                $self->{'loading'} = 0;
                 $self->{'retrieved'} = 1;
             }
         }
