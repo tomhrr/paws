@@ -146,7 +146,7 @@ sub run
 
     my $db_dir = $self->{'context'}->db_directory();
     my $lock_path = $db_dir.'/'.$self->{'name'}.'-lock';
-    my $lock = App::Paws::Lock->new($lock_path);
+    my $lock = App::Paws::Lock->new(path => $lock_path);
     eval { $self->_run_internal($since_ts); };
     my $error = $@;
     $lock->unlock();

@@ -345,7 +345,7 @@ sub send_queued
 
     my $queue_dir  = $context->queue_directory();
     my $queue_lock = $queue_dir.'/lock';
-    my $lock       = App::Paws::Lock->new($queue_lock);
+    my $lock       = App::Paws::Lock->new(path => $queue_lock);
 
     my $path = $context->db_directory().'/sender';
     if (not -e $path) {
