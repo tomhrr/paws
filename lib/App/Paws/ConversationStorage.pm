@@ -1,4 +1,4 @@
-package App::Paws::Conversation;
+package App::Paws::ConversationStorage;
 
 use warnings;
 use strict;

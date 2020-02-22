@@ -8,7 +8,7 @@ use JSON::XS qw(decode_json encode_json);
 use List::MoreUtils qw(uniq);
 use Time::HiRes qw(sleep);
 
-use App::Paws::Conversation;
+use App::Paws::ConversationStorage;
 use App::Paws::Lock;
 use App::Paws::Message;
 
@@ -30,7 +30,7 @@ sub _process_conversations
     my @conversation_objs;
     for my $conversation (@{$conversations}) {
         my $data = $db->{'conversations'}->{$conversation} || {};
-        my $conversation_obj = App::Paws::Conversation->new(
+        my $conversation_obj = App::Paws::ConversationStorage->new(
             context   => $context,
             workspace => $ws,
             write_cb  => $write_cb,
