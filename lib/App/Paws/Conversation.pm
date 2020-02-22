@@ -6,6 +6,8 @@ use strict;
 use JSON::XS qw(decode_json);
 use List::Util qw(min minstr first);
 
+use constant UNNEEDED_BUFFER => 3600;
+
 sub new
 {
     my $class = shift;
@@ -256,6 +258,13 @@ sub receive_messages
         $self->{'last_ts'} = $last_ts;
     });
 
+    my @unneeded_deliveries =
+        grep { $_ < ($last_ts
+                        - $ws->modification_window()
+                        - UNNEEDED_BUFFER()) }
+            keys %{$deliveries};
+    delete @{$deliveries}{@unneeded_deliveries};
+
     return 1;
 }
 
@@ -417,7 +426,22 @@ sub receive_threads
             }
             $thread_data->{'last_ts'} = $last_ts;
         });
+
+        my @unneeded_deliveries =
+            grep { $_ < ($last_ts
+                            - $ws->modification_window()
+                            - UNNEEDED_BUFFER()) }
+                keys %{$deliveries};
+        delete @{$deliveries}{@unneeded_deliveries};
     }
+
+    my @unneeded_threads =
+        grep { my $last_ts = $threads->{$_}->{'last_ts'};
+               ($last_ts != 1)
+                    and ($last_ts < (time() - $ws->thread_expiry()
+                                            - UNNEEDED_BUFFER())) }
+            keys %{$threads};
+    delete @{$threads}{@unneeded_threads};
 
     return 1;
 }

@@ -9,7 +9,7 @@ use JSON::XS qw(encode_json decode_json);
 my $true = bless( do{\(my $o = 1)}, 'JSON::PP::Boolean' );
 my $false = bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' );
 
-my $counter = 0;
+my $counter = 1;
 
 my %channel_template = (
     'is_im' => $false,
@@ -83,15 +83,22 @@ my @users2 = (
         name => 'user1' },
 );
 
+my $ts_base    = time();
+my $ts_base_p1 = $ts_base + 1;
+my $ts_base_p2 = $ts_base + 2;
+my $ts_base_p3 = $ts_base + 3;
+my $ts_base_p4 = $ts_base + 4;
+my $ts_base_p5 = $ts_base + 5;
+
 my %channel_id_to_history = (
     C00000001 => [
         { 
-            ts => '2.1',
+            ts => "$ts_base.0",
             text => '<@U00000001> testing',
             type => 'message'
         },
         { 
-            ts => '3.1',
+            ts => "$ts_base_p1.0",
             text => 'ding2',
             user => 'U00000005',
             type => 'message'
@@ -99,34 +106,34 @@ my %channel_id_to_history = (
     ],
     C00000002 => [
         { 
-            ts => '2.1',
+            ts => "$ts_base.0",
             text => 'ding',
             user => 'U00000001',
             type => 'message'
         },
         { 
-            ts => '3.1',
+            ts => "$ts_base_p1.0",
             text => 'ding2',
             user => 'U00000002',
             type => 'message'
         },
         {
-            ts => '4.1',
+            ts => "$ts_base_p2.0",
             text => 'thread!',
             user => 'U00000002',
             type => 'message',
-            thread_ts => '5.1'
+            thread_ts => "$ts_base_p3.0",
         },
     ],
     D00000001 => [
         { 
-            ts => '2.1',
+            ts => "$ts_base.0",
             text => 'ding',
             user => 'U00000001',
             type => 'message'
         },
         { 
-            ts => '3.1',
+            ts => "$ts_base_p1.0",
             text => 'ding2',
             user => 'U00000002',
             type => 'message'
@@ -134,13 +141,13 @@ my %channel_id_to_history = (
     ],
     D00000002 => [
         { 
-            ts => '2.1',
+            ts => "$ts_base.0",
             text => 'ding',
             user => 'U00000001',
             type => 'message'
         },
         { 
-            ts => '3.1',
+            ts => "$ts_base_p1.0",
             text => 'ding2',
             user => 'U00000002',
             type => 'message'
@@ -150,15 +157,15 @@ my %channel_id_to_history = (
 
 my %thread_to_history = (
     C00000002 => {
-        '5.1' => [
+        "$ts_base_p3.0" => [
             { 
-                ts => '6.1',
+                ts => "$ts_base_p4.0",
                 text => 'thread-reply-1!',
                 user => 'U00000001',
                 type => 'message'
             },
             { 
-                ts => '7.1',
+                ts => "$ts_base_p5.0",
                 text => 'thread-reply-2!',
                 user => 'U00000002',
                 type => 'message',
@@ -318,23 +325,27 @@ sub _handle_request
                 ($thread_ts)
                     ? $thread_to_history{$channel_id}->{$thread_ts}
                     : $channel_id_to_history{$channel_id};
-            my $ts = $data->{'ts'};
-            my $found = 0;
-            for (my $i = 0; $i < @{$ref}; $i++) {
-                my $message = $ref->[$i];
-                if ($message->{'ts'} eq $ts) {
-                    $message->{'text'} = $text;
-                    $message->{'edited'} = {
-                        ts => time().'.'.sprintf("%06d", $counter++)
-                    };
-                    $found = 1;
-                    last;
-                }
-            }
-            if ($found) {
-                $res->code(200);
-            } else {
+            if (not $ref) {
                 $res->code(404);
+            } else {
+                my $ts = $data->{'ts'};
+                my $found = 0;
+                for (my $i = 0; $i < @{$ref}; $i++) {
+                    my $message = $ref->[$i];
+                    if ($message->{'ts'} eq $ts) {
+                        $message->{'text'} = $text;
+                        $message->{'edited'} = {
+                            ts => time().'.'.sprintf("%06d", $counter++),
+                        };
+                        $found = 1;
+                        last;
+                    }
+                }
+                if ($found) {
+                    $res->code(200);
+                } else {
+                    $res->code(404);
+                }
             }
         } elsif ($path eq '/chat.delete') {
             my $data = decode_json($r->content());
@@ -391,7 +402,7 @@ sub _handle_request
             my $channel_id = $data->{'channel'};
             my $ts = $data->{'ts'};
             my $ref = $channel_id_to_history{$channel_id};
-            my $thread_ts = time().'.'.sprintf("%06d", $counter++);
+            my $thread_ts     = time().'.'.sprintf("%06d", $counter++);
             my $thread_msg_ts = time().'.'.sprintf("%06d", $counter++);
             my $found = 0;
             for my $msg (@{$ref}) {

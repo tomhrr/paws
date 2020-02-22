@@ -8,6 +8,7 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
+my $edit_ts = time().'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
@@ -81,7 +82,7 @@ my $req = HTTP::Request->new();
 $req->method('POST');
 $req->uri($url.'/chat.update');
 $req->content(encode_json({ channel => 'C00000001',
-                            ts      => '2.1',
+                            ts      => $edit_ts,
                             text    => 'edited', }));
 my $res = $ua->request($req);
 ok($res->is_success(), 'Updated message successfully');

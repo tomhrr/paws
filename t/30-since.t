@@ -73,26 +73,31 @@ $App::Paws::DB_DIR = $db_dir;
 
 $App::Paws::Context::SLACK_BASE_URL = $url;
 
+sleep(10);
 my $paws = App::Paws->new();
-$paws->receive(1, undef, timelocal(0, 0, 0, 1, 1, 2000));
+$paws->receive(1, undef, time());
 my @files = `find $mail_dir -type f`;
 is(@files, 0, 'Got no mail (all messages are too old)');
 
+sleep(1);
+my $msg_ts = time();
 my $mail = File::Temp->new();
-print $mail q(Content-Type: text/plain; charset="UTF-8"
+print $mail <<EOF;
+Content-Type: text/plain; charset="UTF-8"
 Content-Disposition: inline
 Content-Transfer-Encoding: quoted-printable
 MIME-Version: 1.0
 Date: Thu, 16 May 2019 15:39:47 +1000
-From: slackbot@test.slack.alt
-To: im/slackbot@test.slack.alt
+From: slackbot\@test.slack.alt
+To: im/slackbot\@test.slack.alt
 Subject: Message from im/slackbot
-Message-ID: <1557985187.000100.im/slackbot@test.slack.alt>
-Reply-To: im/slackbot@test.slack.alt
+Message-ID: <$msg_ts.000100.im/slackbot\@test.slack.alt>
+Reply-To: im/slackbot\@test.slack.alt
 
 If you're not sure how to do something in Slack, *just type your question below*.
 
-Or press these buttons to learn about the following topics:);
+Or press these buttons to learn about the following topics:
+EOF
 $mail->flush();
 $mail->seek(0, SEEK_SET);
 

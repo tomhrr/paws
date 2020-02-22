@@ -8,6 +8,8 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
+my $thread_ts     = (time() + 3).'.0';
+my $thread_msg_ts = (time() + 4).'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
@@ -82,8 +84,8 @@ my $req = HTTP::Request->new();
 $req->method('POST');
 $req->uri($url.'/chat.update');
 $req->content(encode_json({ channel   => 'C00000002',
-                            ts        => '6.1',
-                            thread_ts => '5.1',
+                            ts        => $thread_msg_ts,
+                            thread_ts => $thread_ts,
                             text      => 'edited', }));
 my $res = $ua->request($req);
 ok($res->is_success(), 'Updated thread message successfully');

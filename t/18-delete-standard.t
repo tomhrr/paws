@@ -8,6 +8,7 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
+my $msg_ts = time().'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
@@ -81,7 +82,7 @@ my $req = HTTP::Request->new();
 $req->method('POST');
 $req->uri($url.'/chat.delete');
 $req->content(encode_json({ channel => 'C00000001',
-                            ts      => '2.1' }));
+                            ts      => $msg_ts }));
 my $res = $ua->request($req);
 ok($res->is_success(), 'Deleted message successfully');
 

@@ -8,6 +8,7 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
+my $msg_ts = (time() + 1).'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
@@ -82,7 +83,7 @@ my $req = HTTP::Request->new();
 $req->method('POST');
 $req->uri($url.'/paws.thread.make');
 $req->content(encode_json({ channel => 'C00000002',
-                            ts      => '3.1' }));
+                            ts      => $msg_ts }));
 my $res = $ua->request($req);
 ok($res->is_success(), 'Created new thread successfully');
 
