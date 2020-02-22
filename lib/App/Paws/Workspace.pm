@@ -10,6 +10,7 @@ use Time::HiRes qw(sleep);
 
 use App::Paws::Workspace::Conversations;
 use App::Paws::Workspace::Users;
+use App::Paws::Utils qw(standard_get_request);
 
 our $LIMIT = 100;
 
@@ -76,27 +77,13 @@ sub configured_conversations
     return $_[0]->{'configured_conversations'};
 }
 
-sub standard_get_request_only
-{
-    my ($self, $path, $query_form) = @_;
-
-    my $context = $self->{'context'};
-    my $token = $self->{'token'};
-    my $req = HTTP::Request->new();
-    $req->header('Content-Type' => 'application/x-www-form-urlencoded');
-    $req->header('Authorization' => 'Bearer '.$token);
-    my $uri = URI->new($context->slack_base_url().$path);
-    $uri->query_form(%{$query_form});
-    $req->uri($uri);
-    $req->method('GET');
-    return $req;
-}
-
 sub get_conversations_request
 {
     my ($self) = @_;
 
-    return $self->standard_get_request_only(
+    return standard_get_request(
+        $self->{'context'},
+        $self,
         '/conversations.list',
         { types => 'public_channel,private_channel,mpim,im' }
     );
@@ -107,7 +94,9 @@ sub get_replies_request
     my ($self, $conversation_id, $thread_ts, $last_ts, $latest_ts,
         $cursor) = @_;
 
-    return $self->standard_get_request_only(
+    return standard_get_request(
+        $self->{'context'},
+        $self,
         '/conversations.replies',
         { channel => $conversation_id,
           ts      => $thread_ts,
@@ -122,7 +111,9 @@ sub get_history_request
 {
     my ($self, $conversation_id, $last_ts, $latest_ts, $cursor) = @_;
 
-    return $self->standard_get_request_only(
+    return standard_get_request(
+        $self->{'context'},
+        $self,
         '/conversations.history',
         { channel => $conversation_id,
           limit   => $LIMIT,

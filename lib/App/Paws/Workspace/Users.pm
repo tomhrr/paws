@@ -8,7 +8,7 @@ use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use Time::HiRes qw(sleep);
 
-use App::Paws::Utils qw(standard_get_request_only);
+use App::Paws::Utils qw(standard_get_request);
 
 our $LIMIT = 100;
 
@@ -52,7 +52,7 @@ sub _init_users
         return 1;
     }
 
-    my $req = standard_get_request_only(
+    my $req = standard_get_request(
         $context, $ws,
         '/users.list',
         { limit => $LIMIT }
@@ -79,7 +79,7 @@ sub _init_users
             push @users, @{$data->{'members'}};
 
             if ($data->{'response_metadata'}->{'next_cursor'}) {
-                my $req = standard_get_request_only(
+                my $req = standard_get_request(
                     $context, $ws,
                     '/users.list',
                     { limit  => $LIMIT,

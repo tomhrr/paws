@@ -8,7 +8,7 @@ use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use Time::HiRes qw(sleep);
 
-use App::Paws::Utils qw(standard_get_request_only);
+use App::Paws::Utils qw(standard_get_request);
 
 our $LIMIT = 100;
 
@@ -74,7 +74,7 @@ sub _init_conversations
         return 1;
     }
 
-    my $req = standard_get_request_only(
+    my $req = standard_get_request(
         $context, $ws,
         '/users.list',
         { limit => $LIMIT }
@@ -113,7 +113,8 @@ sub _init_conversations
         }
 
         if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
-            my $req = $ws->standard_get_request_only(
+            my $req = standard_get_request(
+                $context, $ws,
                 '/conversations.list',
                 { cursor => $cursor,
                   types  => 'public_channel,private_channel,mpim,im' }

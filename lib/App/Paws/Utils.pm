@@ -6,14 +6,14 @@ use strict;
 use POSIX qw(strftime);
 use base 'Exporter';
 our @EXPORT_OK = qw(get_mail_date
-                    standard_get_request_only);
+                    standard_get_request);
 
 sub get_mail_date
 {
     return strftime("%a, %d %b %Y %H:%M:%S %z", localtime($_[0]));
 }
 
-sub standard_get_request_only
+sub standard_get_request
 {
     my ($context, $ws, $path, $query_form) = @_;
 

@@ -6,6 +6,7 @@ use strict;
 use App::Paws;
 use App::Paws::Context;
 use App::Paws::Runner;
+use App::Paws::Utils qw(standard_get_request);
 
 use lib './t/lib';
 use App::Paws::Test::Server;
@@ -77,7 +78,9 @@ my $paws = App::Paws->new();
 my $runner = $paws->{'context'}->{'runner'};
 
 my $ws = $paws->{'context'}->{'workspaces'}->{'test'};
-my $req = $ws->standard_get_request_only(
+my $req = standard_get_request(
+    $paws->{'context'},
+    $ws,
     '/conversations.list',
     { types => 'public_channel,private_channel,mpim,im' }
 );
