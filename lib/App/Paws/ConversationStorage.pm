@@ -447,3 +447,122 @@ sub receive_threads
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+App::Paws::ConversationStorage
+
+=head1 DESCRIPTION
+
+Keep a local copy of a Slack conversation up to date.
+
+=head1 CONSTRUCTOR
+
+=over 4
+
+=item B<new>
+
+Arguments (hash):
+
+=over 8
+
+=item context
+
+The current L<App::Paws::Context> object.
+
+=item workspace
+
+The L<App::Paws::Workspace> object for the
+workspace of this conversation.
+
+=item id
+
+The unique identifier for the conversation
+(e.g. 'C00000001').  Typically a letter followed
+by a series of numbers.
+
+=item name
+
+The name of the conversation.  Typically the type
+of the conversation (e.g. 'im', 'channel'),
+followed by a forward slash, followed by a string
+description of the conversation (e.g. a username
+for an IM conversation, a channel name for a
+channel conversation).
+
+=item write_cb
+
+A coderef that takes a L<MIME::Entity> and writes
+it to storage.
+
+=item data
+
+For a conversation that has already been processed
+at least once: the hashref of data returned by
+calling L<to_data> once that previous processing
+had completed.
+
+=back
+
+Returns a new instance of L<App::Paws::ConversationStorage>.
+
+=back
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item B<to_data>
+
+Returns a hashref of data that must be passed as the C<data> argument
+on a subsequent call to L<new> in order to resynchronise the
+conversation.
+
+=item B<receive_messages>
+
+Receive new messages for this conversation, writing them to disk by
+way of the C<write_cb> callback.
+
+=item B<receive_threads>
+
+Receive new threads and thread replies in this conversation, writing
+them to disk by way of the C<write_cb> callback.
+
+=back
+
+=head1 AUTHOR
+
+Tom Harrison (C<tomh5908@gmail.com>)
+
+=head1 COPYRIGHT & LICENCE
+
+Copyright (c) 2020, Tom Harrison
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  * Neither the name of the copyright holder nor the
+    names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut
