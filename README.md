@@ -147,6 +147,10 @@ Type-specific configuration:
 
     `slack-$workspace_name-$user_name`
 
+### Bugs/problems/suggestions
+
+See the [GitHub issue tracker](https://github.com/tomhrr/paws/issues).
+
 ### Licence
 
 See LICENCE.
