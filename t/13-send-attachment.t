@@ -77,7 +77,6 @@ my @files = `find $mail_dir -type f`;
 is(@files, 11, 'Got 11 mails');
 my %files_by_name = map { $_ => 1 } @files;
 
-sleep(3);
 my $mail3 = File::Temp->new();
 print $mail3 q(MIME-Version: 1.0
 Date: Thu, 01 Jan 1970 10:00:03 +1000

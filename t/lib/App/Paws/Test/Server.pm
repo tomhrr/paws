@@ -84,11 +84,11 @@ my @users2 = (
 );
 
 my $ts_base    = time();
-my $ts_base_p1 = $ts_base + 1;
-my $ts_base_p2 = $ts_base + 2;
-my $ts_base_p3 = $ts_base + 3;
-my $ts_base_p4 = $ts_base + 4;
-my $ts_base_p5 = $ts_base + 5;
+my $ts_base_p1 = $ts_base - 1;
+my $ts_base_p2 = $ts_base - 2;
+my $ts_base_p3 = $ts_base - 3;
+my $ts_base_p4 = $ts_base - 4;
+my $ts_base_p5 = $ts_base - 5;
 
 my %channel_id_to_history = (
     C00000001 => [

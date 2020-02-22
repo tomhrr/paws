@@ -73,13 +73,11 @@ $App::Paws::DB_DIR = $db_dir;
 
 $App::Paws::Context::SLACK_BASE_URL = $url;
 
-sleep(10);
 my $paws = App::Paws->new();
 $paws->receive(1, undef, time());
 my @files = `find $mail_dir -type f`;
 is(@files, 0, 'Got no mail (all messages are too old)');
 
-sleep(1);
 my $msg_ts = time();
 my $mail = File::Temp->new();
 print $mail <<EOF;

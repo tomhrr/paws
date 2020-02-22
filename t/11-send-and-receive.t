@@ -76,7 +76,6 @@ $paws->receive(1);
 my @files = `find $mail_dir -type f`;
 is(@files, 11, 'Got 11 mails');
 
-sleep(3);
 my $msg_ts = time();
 my $mail = File::Temp->new();
 print $mail <<EOF;
