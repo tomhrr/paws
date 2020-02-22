@@ -82,15 +82,18 @@ sub receive
         }
         @receiver_specs_to_process = $receiver_spec;
     }
-    for my $receiver_spec (@receiver_specs_to_process) {
-        my $type = $receiver_spec->{'type'};
-        my $module_name = "App::Paws::Receiver::$type";
-        my $receiver = $module_name->new(
-            context => $context,
-            %{$receiver_spec}
-        );
+    my @receivers =
+        map { my $type = $_->{'type'};
+              my $module_name = "App::Paws::Receiver::$type";
+              $module_name->new(context => $context, %{$_}) }
+            @receiver_specs_to_process;
+    for my $receiver (@receivers) {
+        $receiver->workspace()->conversations()->retrieve_nb();
+    }
+    for my $receiver (@receivers) {
         $receiver->run($counter, $since_ts);
     }
+
     return 1;
 }
 
@@ -104,7 +107,7 @@ sub aliases
     for my $ws_name (keys %{$context->{'workspaces'}}) {
         my $ws = $context->{'workspaces'}->{$ws_name};
         $ws->users()->retrieve();
-        my $user_list = $ws->users()->get_user_list();
+        my $user_list = $ws->users()->get_list();
         for my $user (@{$user_list}) {
             my ($real_name, $username) = @{$user};
             push @aliases,
@@ -113,6 +116,21 @@ sub aliases
         }
     }
     return \@aliases;
+}
+
+sub reset
+{
+    my ($self) = @_;
+
+    my $context = $self->{'context'};
+    for my $ws (values %{$context->{'workspaces'}}) {
+        for my $module (qw(conversations users)) {
+            $ws->{$module}->{'retrieving'} = 0;
+            $ws->{$module}->{'retrieved'}  = 0;
+        };
+    }
+
+    return 1;
 }
 
 1;

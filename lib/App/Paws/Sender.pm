@@ -52,51 +52,6 @@ EOF
     return 1;
 }
 
-sub _get_conversation_map
-{
-    my ($runner, $ws) = @_;
-
-    my $req = $ws->get_conversations_request();
-    my @channels;
-    $runner->add('conversations.list', $req, sub {
-        my ($self, $res, $fn) = @_;
-
-        if (not $res->is_success()) {
-            my $res_str = $res->as_string();
-            chomp $res_str;
-            print STDERR "Unable to process response: $res_str\n";
-            return;
-        }
-        my $data = decode_json($res->content());
-        if ($data->{'error'}) {
-            my $res_str = $res->as_string();
-            chomp $res_str;
-            print STDERR "Error in response: $res_str\n";
-            return;
-        }
-
-        push @channels, @{$data->{'channels'}};
-
-        if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
-            my $req = $ws->standard_get_request_only(
-                '/conversations.list',
-                { cursor => $cursor,
-                  types  => 'public_channel,private_channel,mpim,im' }
-            );
-            $runner->add('conversations.list', $req, $fn);
-        }
-    });
-    while (not $runner->poke()) {
-        sleep(0.01);
-    }
-
-    my %conversation_map =
-        map { $ws->conversation_to_name($_) => $_->{'id'} }
-            @channels;
-
-    return \%conversation_map;
-}
-
 sub _create_conversation
 {
     my ($self, $ws, $message_id, $user_ids) = @_;
@@ -160,11 +115,7 @@ sub _get_conversation_for_single_recipient
         return;
     }
 
-    my $runner = $context->runner();
-    my %conversation_map = %{_get_conversation_map($runner, $ws)};
-    my $conversation_id =
-        $conversation_map{"$type/$name"}
-            || $conversation_map{"im/$name"};
+    my $conversation_id = $ws->conversations()->name_to_id($name);
 
     return ($ws, $conversation_id, $thread_ts);
 }
@@ -240,7 +191,7 @@ sub _send_queued_single
         $ws = $context->workspaces()->{$ws_names[0]};
         my @user_ids;
         for my $username (@usernames) {
-            my $user_id = $ws->users()->name_to_user_id($username);
+            my $user_id = $ws->users()->name_to_id($username);
             if (not $user_id) {
                 $self->_write_bounce($message_id,
                                      "Invalid username: '$username'");

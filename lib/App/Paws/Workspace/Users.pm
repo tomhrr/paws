@@ -20,7 +20,8 @@ sub new
     my $self = {
         (map { $_ => $args{$_} }
             qw(context workspace)),
-        retrieved => 0,
+        retrieving => 0,
+        retrieved  => 0,
     };
 
     bless $self, $class;
@@ -41,12 +42,13 @@ sub _init_users
         write_file($path, '{}');
     }
     my $db = decode_json(read_file($path));
-
-    if ((not $force_retrieve) and $db->{'users'}) {
+    if ($db->{'users'}) {
         $self->{'users'} = $db->{'users'};
+    }
+    if (not $force_retrieve) {
         return 1;
     }
-    if ($self->{'retrieved'}) {
+    if ($self->{'retrieving'} or $self->{'retrieved'}) {
         return 1;
     }
 
@@ -56,7 +58,8 @@ sub _init_users
         { limit => $LIMIT }
     );
 
-    $self->{'users'} = [];
+    $self->{'retrieving'} = 1;
+    my @users;
     $runner->add(
         'users.list', $req, sub {
             my ($runner, $res, $fn) = @_;
@@ -73,8 +76,7 @@ sub _init_users
                 print STDERR "Error in response: $res_str\n";
                 return;
             }
-            my @users = @{$data->{'members'}};
-            push @{$self->{'users'}}, @users;
+            push @users, @{$data->{'members'}};
 
             if ($data->{'response_metadata'}->{'next_cursor'}) {
                 my $req = standard_get_request_only(
@@ -87,13 +89,16 @@ sub _init_users
                 $runner->add('users.list', $req, $fn);
             } else {
                 $db->{'users'} =
+                    $self->{'users'} =
                     [ map { +{ id        => $_->{'id'},
                                name      => $_->{'name'},
                                real_name => $_->{'real_name'},
                                deleted   => $_->{'deleted'} } }
-                        @{$self->{'users'}} ];
+                        @users ];
                 write_file($path, encode_json($db));
-                $self->{'retrieved'} = 1;
+                $self->{'retrieving'} = 0;
+                $self->{'retrieved'}  = 1;
+                delete @{$self}{qw(user_map user_list)};
             }
         }
     );
@@ -116,6 +121,21 @@ sub _get_user_map
     return \%user_map;
 }
 
+sub retrieve_nb
+{
+    my ($self) = @_;
+
+    if ($self->{'retrieving'} or $self->{'retrieved'}) {
+        return 1;
+    }
+
+    my $context = $self->{'context'};
+    my $runner  = $context->runner();
+    $self->_init_users(1);
+
+    return 1;
+}
+
 sub retrieve
 {
     my ($self) = @_;
@@ -124,18 +144,17 @@ sub retrieve
         return 1;
     }
 
+    $self->retrieve_nb();
     my $context = $self->{'context'};
     my $runner  = $context->runner();
-    $self->_init_users(1);
     while (not $runner->poke('users.list')) {
         sleep(0.01);
     }
-    delete @{$self}{qw(user_map user_list)};
 
     return 1;
 }
 
-sub user_id_to_name
+sub id_to_name
 {
     my ($self, $user_id) = @_;
 
@@ -143,24 +162,24 @@ sub user_id_to_name
     my %rev = reverse %{$user_map};
     if (not exists $rev{$user_id} and not $self->{'retrieved'}) {
         $self->retrieve();
-        return $self->user_id_to_name($user_id);
+        return $self->id_to_name($user_id);
     }
     return $rev{$user_id};
 }
 
-sub name_to_user_id
+sub name_to_id
 {
     my ($self, $name) = @_;
 
     my $user_map = $self->_get_user_map();
     if (not exists $user_map->{$name} and not $self->{'retrieved'}) {
         $self->retrieve();
-        return $self->name_to_user_id($name);
+        return $self->name_to_id($name);
     }
     return $user_map->{$name};
 }
 
-sub get_user_list
+sub get_list
 {
     my ($self) = @_;
 

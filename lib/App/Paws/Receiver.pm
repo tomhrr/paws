@@ -76,47 +76,14 @@ sub _run_internal
     my %previous_map = %{$conversation_map};
     my $has_cached = (keys %previous_map > 0) ? 1 : 0;
 
-    my $req = $ws->get_conversations_request();
-    $runner->add('conversations.list', $req, sub {
-        my ($self, $res, $fn) = @_;
-        if (not $res->is_success()) {
-            my $res_str = $res->as_string();
-            chomp $res_str;
-            print STDERR "Unable to process response: $res_str\n";
-            return;
-        }
-        my $data = decode_json($res->content());
-        if ($data->{'error'}) {
-            my $res_str = $res->as_string();
-            chomp $res_str;
-            print STDERR "Error in response: $res_str\n";
-            return;
-        }
-
-        my @conversations =
-            grep { $_->{'is_im'} or $_->{'is_member'} }
-                @{$data->{'channels'}};
-        for my $conversation (@conversations) {
-            my $name = $ws->conversation_to_name($conversation);
-            $conversation_map->{$name} = $conversation->{'id'};
-        }
-
-        if (my $cursor = $data->{'response_metadata'}->{'next_cursor'}) {
-            my $req = $ws->standard_get_request_only(
-                '/conversations.list',
-                { cursor => $cursor,
-                  types  => 'public_channel,private_channel,mpim,im' }
-            );
-            $runner->add('conversations.list', $req, $fn);
-        }
-    });
-
     my $used_cached = 0;
     if ($has_cached) {
         $used_cached = 1;
     } else {
-        while (not $runner->poke('conversations.list')) {
-            sleep(0.01);
+        $ws->conversations()->retrieve();
+        for my $conversation (@{$ws->conversations()->get_list()}) {
+            my $name = $conversation->{'name'};
+            $conversation_map->{$name} = $conversation->{'id'};
         }
     }
 
@@ -128,7 +95,7 @@ sub _run_internal
             : ($_ =~ /^(.*?)\/\*$/) ? (grep { /^$1\// }
                                             @conversation_names)
                                     : $_ }
-            @{$ws->conversations()};
+            @{$ws->configured_conversations() || []};
 
     my %conversation_to_last_ts =
         map { $_ => $db->{'conversations'}->{$_}->{'last_ts'} || 1 }
@@ -146,6 +113,11 @@ sub _run_internal
 
     my @new_conversations;
     if ($has_cached) {
+        $ws->conversations()->retrieve();
+        for my $conversation (@{$ws->conversations()->get_list()}) {
+            my $name = $conversation->{'name'};
+            $conversation_map->{$name} = $conversation->{'id'};
+        }
         for my $name (keys %{$conversation_map}) {
             if (not $previous_map{$name}) {
                 push @new_conversations, $name;

@@ -22,6 +22,11 @@ sub new
     return $self;
 }
 
+sub workspace
+{
+    return $_[0]->{'workspace'};
+}
+
 sub run
 {
     my ($self, $counter, $since_ts) = @_;

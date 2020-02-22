@@ -81,7 +81,7 @@ sub _substitute_user_mentions
 
     my $ws = $self->{'workspace'};
     my @ats = ($content =~ /<\@(U.*?)>/g);
-    my %at_map = map { $_ => $ws->users()->user_id_to_name($_) } @ats;
+    my %at_map = map { $_ => $ws->users()->id_to_name($_) } @ats;
     for my $at (keys %at_map) {
         if (my $name = $at_map{$at}) {
             $content =~ s/<\@$at>/<\@$name>/g;
@@ -142,7 +142,7 @@ sub to_entity
     my $from_user = 'unknown';
     my $user = $self->user();
     if ($user) {
-        my $name = $ws->users()->user_id_to_name($user);
+        my $name = $ws->users()->id_to_name($user);
         if ($name) {
             $from_user = $name;
         }

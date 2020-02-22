@@ -8,6 +8,7 @@ use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use Time::HiRes qw(sleep);
 
+use App::Paws::Workspace::Conversations;
 use App::Paws::Workspace::Users;
 
 our $LIMIT = 100;
@@ -19,10 +20,8 @@ sub new
 
     my $self = {
         (map { $_ => $args{$_} }
-            qw(context name token conversations modification_window
-               thread_expiry)),
-        users_loaded    => 0,
-        users_retrieved => 0,
+            qw(context name token configured_conversations
+               modification_window thread_expiry)),
     };
 
     bless $self, $class;
@@ -31,6 +30,12 @@ sub new
         App::Paws::Workspace::Users->new(
             context   => $args{'context'},
             workspace => $self
+        );
+    $self->{'conversations'} =
+        App::Paws::Workspace::Conversations->new(
+            context   => $args{'context'},
+            workspace => $self,
+            users     => $self->{'users'},
         );
 
     return $self;
@@ -66,25 +71,9 @@ sub conversations
     return $_[0]->{'conversations'};
 }
 
-sub conversation_to_name
+sub configured_conversations
 {
-    my ($self, $conversation) = @_;
-
-    my $type = $conversation->{'is_im'}    ? 'im'
-             : $conversation->{'is_mpim'}  ? 'mpim'
-             : $conversation->{'is_group'} ? 'group'
-                                           : 'channel';
-    my $name = $conversation->{'name'};
-    if (($type eq 'im') and not $name) {
-        my $user_id = $conversation->{'user'};
-        $name = $self->users()->user_id_to_name($user_id);
-        if (not $name) {
-            warn "Unable to find name for user '$user_id'";
-            $name = 'unknown';
-        }
-    }
-
-    return "$type/$name";
+    return $_[0]->{'configured_conversations'};
 }
 
 sub standard_get_request_only

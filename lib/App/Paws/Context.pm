@@ -44,8 +44,9 @@ sub new
               my $ws = App::Paws::Workspace->new(
                   context => $self,
                   name    => $ws_name,
+                  configured_conversations => $ws_spec->{'conversations'},
                   (map { $_ => $ws_spec->{$_} }
-                      qw(token conversations modification_window
+                      qw(token modification_window
                          thread_expiry))
               );
               $ws_name => $ws }

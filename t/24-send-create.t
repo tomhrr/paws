@@ -100,6 +100,7 @@ $text);
 
 my $mail1 = $make_msg->(time().'.01', 'To multiple');
 $paws->send([], $mail1);
+$paws->reset();
 
 my $cap = IO::Capture::Stderr->new();
 $cap->start();
