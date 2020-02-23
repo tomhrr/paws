@@ -15,10 +15,10 @@ sub new
     my ($class, $context, $workspace, $conversation, $message_data) = @_;
 
     my $self = {
-        context      	  => $context,
-        workspace    	  => $workspace,
+        context           => $context,
+        workspace         => $workspace,
         conversation_name => $conversation,
-        edited_ts    	  => $message_data->{'edited'}->{'ts'},
+        edited_ts         => $message_data->{'edited'}->{'ts'},
         (map { $_ => $message_data->{$_} }
             qw(ts thread_ts user text files)),
     };
