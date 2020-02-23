@@ -494,8 +494,8 @@ channel conversation).
 
 =item write_cb
 
-A coderef that takes a L<MIME::Entity> and writes
-it to storage.
+A coderef that takes a L<MIME::Entity> object and
+writes it to storage.
 
 =item data
 
