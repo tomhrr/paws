@@ -77,7 +77,7 @@ sub _init_conversations
     my $req = standard_get_request(
         $context, $ws,
         '/conversations.list',
-        { limit => $LIMIT }
+        { types  => 'public_channel,private_channel,mpim,im' }
     );
 
     $self->{'retrieving'} = 1;
