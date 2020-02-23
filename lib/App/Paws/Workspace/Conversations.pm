@@ -76,7 +76,7 @@ sub _init_conversations
 
     my $req = standard_get_request(
         $context, $ws,
-        '/users.list',
+        '/conversations.list',
         { limit => $LIMIT }
     );
 
