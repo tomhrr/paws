@@ -13,7 +13,7 @@ sub new
     my %args = @_;
     my $self = {
         context   => $args{'context'},
-        workspace => $args{'context'}->{'workspaces'}->{$args{'workspace'}},
+        workspace => $args{'workspace'},
         name      => $args{'name'},
         path      => $args{'path'},
         args      => $args{'args'},

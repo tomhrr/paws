@@ -83,9 +83,14 @@ sub receive
         @receiver_specs_to_process = $receiver_spec;
     }
     my @receivers =
-        map { my $type = $_->{'type'};
+        map { my %args = %{$_};
+              my $type = $args{'type'};
               my $module_name = "App::Paws::Receiver::$type";
-              $module_name->new(context => $context, %{$_}) }
+              my $ws_name = delete $args{'workspace'};
+              my $ws = $context->{'workspaces'}->{$ws_name};
+              $module_name->new(context   => $context,
+                                workspace => $ws,
+                                %args) }
             @receiver_specs_to_process;
     for my $receiver (@receivers) {
         $receiver->workspace()->conversations()->retrieve_nb();
