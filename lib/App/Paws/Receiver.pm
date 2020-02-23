@@ -82,8 +82,11 @@ sub _run_internal
     } else {
         $ws->conversations()->retrieve();
         for my $conversation (@{$ws->conversations()->get_list()}) {
-            my $name = $conversation->{'name'};
-            $conversation_map->{$name} = $conversation->{'id'};
+            if (($conversation->{'type'} eq 'im')
+                    or ($conversation->{'is_member'})) {
+                my $name = $conversation->{'name'};
+                $conversation_map->{$name} = $conversation->{'id'};
+            }
         }
     }
 
@@ -115,8 +118,11 @@ sub _run_internal
     if ($has_cached) {
         $ws->conversations()->retrieve();
         for my $conversation (@{$ws->conversations()->get_list()}) {
-            my $name = $conversation->{'name'};
-            $conversation_map->{$name} = $conversation->{'id'};
+            if (($conversation->{'type'} eq 'im')
+                    or ($conversation->{'is_member'})) {
+                my $name = $conversation->{'name'};
+                $conversation_map->{$name} = $conversation->{'id'};
+            }
         }
         for my $name (keys %{$conversation_map}) {
             if (not $previous_map{$name}) {
