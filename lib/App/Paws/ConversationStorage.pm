@@ -110,7 +110,7 @@ sub _delete_absent_messages
         $seen_messages, $deletions, $write_cb) = @_;
 
     my @deliveries_list =
-        grep { $_ ge $begin_ts and $_ le $last_ts }
+        grep { $_ > $begin_ts and $_ <= $last_ts }
             keys %{$deliveries};
     for my $ts (@deliveries_list) {
         if ($seen_messages->{$ts}) {
@@ -131,63 +131,6 @@ sub _delete_absent_messages
     return 1;
 }
 
-sub _receive_modifications
-{
-    my ($self) = @_;
-
-    my $context    = $self->{'context'};
-    my $ws         = $self->{'workspace'};
-    my $id         = $self->{'id'};
-    my $name       = $self->{'name'};
-    my $write_cb   = $self->{'write_cb'};
-    my $first_ts   = $self->{'first_ts'};
-    my $last_ts    = $self->{'last_ts'};
-    my $threads    = $self->{'threads'};
-    my $deliveries = $self->{'deliveries'};
-    my $deletions  = $self->{'deletions'};
-    my $edits      = $self->{'edits'};
-    my $runner     = $context->runner();
-    my $begin_ts   = $last_ts - $ws->modification_window();
-
-    my %seen_messages;
-    my $history_req = $ws->get_history_request($id, $begin_ts, $last_ts);
-    $runner->add('conversations.history', $history_req, sub {
-        eval {
-            my ($runner, $res, $fn) = @_;
-            my $data = _process_response($res);
-            if (not $data) {
-                return;
-            }
-
-            my @messages =
-                map { App::Paws::Message->new($context, $ws, $name, $_) }
-                    @{$data->{'messages'}};
-            _check_for_new_threads(\@messages, $threads);
-            _write_new_edits(\@messages, $first_ts, $first_ts,
-                             $edits, $deliveries, $write_cb);
-            for my $message (@messages) {
-                $seen_messages{$message->ts()} = 1;
-            }
-
-            if (my $cursor =
-                    $data->{'response_metadata'}->{'next_cursor'}) {
-                $history_req =
-                    $ws->get_history_request($id, $begin_ts,
-                                             $last_ts, $cursor);
-                $runner->add('conversations.history', $history_req, $fn);
-            } else {
-                _delete_absent_messages($deliveries, $context, $ws, $name,
-                                        $begin_ts, $last_ts,
-                                        \%seen_messages,
-                                        $deletions, $write_cb);
-            }
-        };
-        if (my $error = $@) {
-            print STDERR $error."\n";
-        }
-    });
-}
-
 sub receive_messages
 {
     my ($self, $since_ts) = @_;
@@ -204,22 +147,15 @@ sub receive_messages
     my $threads    = $self->{'threads'};
     my $edits      = $self->{'edits'};
     my $runner     = $context->runner();
+    my $begin_ts   = $last_ts - $ws->modification_window();
 
     if ($since_ts and ($last_ts < $since_ts)) {
         $last_ts = $since_ts;
         $self->{'last_ts'} = $last_ts;
     }
 
-    if ($ws->modification_window() and $first_ts) {
-        eval {
-            $self->_receive_modifications();
-        };
-        if (my $error = $@) {
-            print STDERR $error."\n";
-        }
-    }
-
-    my $history_req = $ws->get_history_request($id, $last_ts);
+    my %seen_messages;
+    my $history_req = $ws->get_history_request($id, $begin_ts);
     $runner->add('conversations.history', $history_req, sub {
         my ($runner, $res, $fn) = @_;
         eval {
@@ -236,20 +172,41 @@ sub receive_messages
                                               $name, $_) }
                     @{$data->{'messages'}};
             _check_for_new_threads(\@messages, $threads);
-            for my $message (@messages) {
+            my @old_messages =
+                grep { $_->ts() <= $last_ts }
+                    @messages;
+            my @new_messages =
+                grep { $_->ts() >  $last_ts }
+                    @messages;
+            for my $message (@new_messages) {
                 my $ts = $message->ts();
                 my $entity = $message->to_entity($first_ts, $first_ts);
                 $write_cb->($entity);
                 $deliveries->{$ts} = 1;
+                $seen_messages{$ts} = 1;
                 if ($ts > $last_ts) {
                     $last_ts = $ts;
                 }
             }
+            _write_new_edits(\@old_messages, $first_ts, $first_ts,
+                             $edits, $deliveries, $write_cb);
+            for my $message (@old_messages) {
+                my $ts = $message->ts();
+                $deliveries->{$ts} = 1;
+                $seen_messages{$ts} = 1;
+            }
 
-            if ($data->{'has_more'}) {
+            if (my $cursor =
+                    $data->{'response_metadata'}->{'next_cursor'}) {
                 $history_req =
-                    $ws->get_history_request($id, $self->{'last_ts'});
+                    $ws->get_history_request($id, $begin_ts,
+                                             undef, $cursor);
                 $runner->add('conversations.history', $history_req, $fn);
+            } else {
+                _delete_absent_messages($deliveries, $context, $ws, $name,
+                                        $begin_ts, $last_ts,
+                                        \%seen_messages,
+                                        $deletions, $write_cb);
             }
         };
         if (my $error = $@) {
