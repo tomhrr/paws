@@ -39,7 +39,7 @@ sub _init_tag
     return 1;
 }
 
-sub process_429
+sub _process_429
 {
     my ($self, $tag, $res) = @_;
 
@@ -83,7 +83,7 @@ sub poke
         }
         while (my ($res, $task_id) = $async->next_response()) {
             if ($res->code() == 429) {
-                $self->process_429($tag, $res);
+                $self->_process_429($tag, $res);
                 goto &poke;
             }
 
@@ -113,3 +113,104 @@ sub add
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+App::Paws::Runner
+
+=head1 DESCRIPTION
+
+A wrapper around L<HTTP::Async>, that supports calling coderefs with
+request results, tagging requests, resolving requests by tag, and
+reducing query rates when HTTP 429 responses are received.
+
+=head1 CONSTRUCTOR
+
+=over 4
+
+=item B<new>
+
+Arguments (hash):
+
+=over 8
+
+=item rates
+
+A hashref mapping from tag name to the number of
+requests that should be processed per minute for
+that tag name.
+
+=item backoff
+
+If a HTTP 429 is received for a tag, then the
+request rate for that tag will be divided by this
+number, and the result will be the new request
+rate for that tag.
+
+=back
+
+Returns a new instance of L<App::Paws::Runner>.
+
+=back
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item B<add>
+
+Takes a tag name, a L<HTTP::Request> object, and a coderef as its
+arguments.  Adds the request to the list of pending requests for the
+tag.  When the request is processed, the coderef will be called with
+the runner object, the L<HTTP::Response> object, and the coderef as
+its arguments.
+
+=item B<poke>
+
+Takes an optional tag name as its single argument.  For all tags, or
+for the specified tag (if an argument was provided), adds a pending
+request to the wrapped L<HTTP::Async> object, if that won't cause the
+request rate for the tag to be exceeded.  Then, this processes all
+completed requests for the tag.  If any completed requests were
+processed, this repeats the process again from the beginning.
+Finally, a boolean is returned indicating whether any requests remain
+to be processed.
+
+=back
+
+=head1 AUTHOR
+
+Tom Harrison (C<tomh5908@gmail.com>)
+
+=head1 COPYRIGHT & LICENCE
+
+Copyright (c) 2020, Tom Harrison
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  * Neither the name of the copyright holder nor the
+    names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut
