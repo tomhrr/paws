@@ -225,81 +225,6 @@ sub receive_messages
     return 1;
 }
 
-sub _receive_thread_modifications
-{
-    my ($self, $since_ts) = @_;
-
-    my $context    = $self->{'context'};
-    my $ws         = $self->{'workspace'};
-    my $id         = $self->{'id'};
-    my $name       = $self->{'name'};
-    my $write_cb   = $self->{'write_cb'};
-    my $first_ts   = $self->{'first_ts'};
-    my $last_ts    = $self->{'last_ts'};
-    my $threads    = $self->{'threads'};
-    my $runner     = $context->runner();
-    my $begin_ts   = $last_ts - $ws->modification_window();
-
-    my $modification_window = $ws->modification_window();
-
-    for my $thread_ts (keys %{$threads}) {
-        my $thread_data = $threads->{$thread_ts};
-        my $last_ts     = $thread_data->{'last_ts'} || 1;
-        my $deliveries  = $thread_data->{'deliveries'};
-        my $deletions   = $thread_data->{'deletions'};
-        my $edits       = $thread_data->{'edits'};
-
-        if ($since_ts and ($last_ts < $since_ts)) {
-            $last_ts = $since_ts;
-            $thread_data->{'last_ts'} = $last_ts;
-        }
-        if (($last_ts != 1)
-                and ($last_ts < (time() - $ws->thread_expiry()))) {
-            next;
-        }
-
-        my %seen_messages;
-        my $replies_req =
-            $ws->get_replies_request($id, $thread_ts, $begin_ts, $last_ts);
-        $runner->add('conversations.replies', $replies_req, sub {
-            my ($runner, $res, $fn) = @_;
-            eval {
-                my $data = _process_response($res);
-                if (not $data) {
-                    return;
-                }
-
-                my @messages =
-                    map { App::Paws::Message->new($context, $ws, $name, $_) }
-                        @{$data->{'messages'}};
-                _write_new_edits(\@messages, $first_ts, $thread_ts,
-                                 $edits, $deliveries, $write_cb);
-                for my $message (@messages) {
-                    $seen_messages{$message->ts()} = 1;
-                }
-
-                if (my $cursor =
-                        $data->{'response_metadata'}->{'next_cursor'}) {
-                    $replies_req =
-                        $ws->get_replies_request($id, $thread_ts, $begin_ts,
-                                                 $last_ts, $cursor);
-                    $runner->add('conversations.replies', $replies_req, $fn);
-                } else {
-                    _delete_absent_messages($deliveries, $context, $ws, $name,
-                                            $begin_ts, $last_ts,
-                                            \%seen_messages,
-                                            $deletions, $write_cb);
-                }
-            };
-            if (my $error = $@) {
-                print STDERR $error."\n";
-            }
-        });
-    }
-
-    return 1;
-}
-
 sub receive_threads
 {
     my ($self, $since_ts) = @_;
@@ -313,20 +238,10 @@ sub receive_threads
     my $last_ts    = $self->{'last_ts'};
     my $threads    = $self->{'threads'};
     my $runner     = $context->runner();
-    my $begin_ts   = $last_ts - $ws->modification_window();
 
     if ($since_ts and ($last_ts < $since_ts)) {
         $last_ts = $since_ts;
         $self->{'last_ts'} = $last_ts;
-    }
-
-    if ($ws->modification_window() and $first_ts) {
-        eval {
-            $self->_receive_thread_modifications($since_ts);
-        };
-        if (my $error = $@) {
-            print STDERR $error."\n";
-        }
     }
 
     for my $thread_ts (keys %{$threads}) {
@@ -335,6 +250,7 @@ sub receive_threads
         my $deliveries  = $thread_data->{'deliveries'};
         my $deletions   = $thread_data->{'deletions'};
         my $edits       = $thread_data->{'edits'};
+        my $begin_ts    = $last_ts - $ws->modification_window();
 
         if ($since_ts and ($last_ts < $since_ts)) {
             $last_ts = $since_ts;
@@ -345,8 +261,9 @@ sub receive_threads
             next;
         }
 
+        my %seen_messages;
         my $replies_req =
-            $ws->get_replies_request($id, $thread_ts, $last_ts);
+            $ws->get_replies_request($id, $thread_ts, $begin_ts);
         $runner->add('conversations.replies', $replies_req, sub {
             my ($runner, $res, $fn) = @_;
             eval {
@@ -359,7 +276,13 @@ sub receive_threads
                     map { App::Paws::Message->new($context, $ws,
                                                   $name, $_) }
                         @{$data->{'messages'}};
-                for my $message (@messages) {
+                my @old_messages =
+                    grep { $_->ts() <= $last_ts }
+                        @messages;
+                my @new_messages =
+                    grep { $_->ts() >  $last_ts }
+                        @messages;
+                for my $message (@new_messages) {
                     my $ts = $message->ts();
                     if ($ts eq $thread_ts) {
                         next;
@@ -367,10 +290,32 @@ sub receive_threads
                     my $entity = $message->to_entity($first_ts, $thread_ts);
                     $write_cb->($entity);
                     $deliveries->{$ts} = 1;
+                    $seen_messages{$ts} = 1;
                     if ($ts > $last_ts) {
                         $last_ts = $ts;
                     }
                 }
+                _write_new_edits(\@old_messages, $first_ts, $thread_ts,
+                                 $edits, $deliveries, $write_cb);
+                for my $message (@old_messages) {
+                    my $ts = $message->ts();
+                    $deliveries->{$ts} = 1;
+                    $seen_messages{$ts} = 1;
+                }
+
+                if (my $cursor =
+                        $data->{'response_metadata'}->{'next_cursor'}) {
+                    $replies_req =
+                        $ws->get_replies_request($id, $thread_ts, $begin_ts,
+                                                 undef, $cursor);
+                    $runner->add('conversations.replies', $replies_req, $fn);
+                } else {
+                    _delete_absent_messages($deliveries, $context, $ws, $name,
+                                            $begin_ts, $last_ts,
+                                            \%seen_messages,
+                                            $deletions, $write_cb);
+                }
+
 
                 if ($data->{'has_more'}) {
                     $replies_req =
