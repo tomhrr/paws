@@ -227,6 +227,7 @@ sub to_delete_entity
         Data          => 'Message deleted.',
     );
     $entity->head()->add('In-Reply-To', $message_id);
+    $entity->head()->delete('X-Mailer');
 
     return $entity;
 }
