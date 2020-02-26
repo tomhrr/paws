@@ -149,7 +149,10 @@ sub receive_messages
     my $threads    = $self->{'threads'};
     my $edits      = $self->{'edits'};
     my $runner     = $context->runner();
-    my $begin_ts   = $last_ts - $ws->modification_window();
+    my $begin_ts   =
+        ($last_ts != 1)
+            ? $last_ts - $ws->modification_window()
+            : $last_ts;
 
     if ($since_ts and ($last_ts < $since_ts)) {
         $last_ts = $since_ts;
@@ -255,7 +258,10 @@ sub receive_threads
         my $deliveries  = $thread_data->{'deliveries'};
         my $deletions   = $thread_data->{'deletions'};
         my $edits       = $thread_data->{'edits'};
-        my $begin_ts    = $last_ts - $ws->modification_window();
+	my $begin_ts    =
+	    ($last_ts != 1)
+		? $last_ts - $ws->modification_window()
+		: $last_ts;
 
         if ($since_ts and ($last_ts < $since_ts)) {
             $last_ts = $since_ts;
