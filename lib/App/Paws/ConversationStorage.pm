@@ -29,6 +29,8 @@ sub new
     $self->{'deletions'}  ||= {};
     $self->{'edits'}      ||= {};
 
+    $self->{'threads_retrieved'} = {};
+
     bless $self, $class;
     return $self;
 }
@@ -245,6 +247,9 @@ sub receive_threads
     }
 
     for my $thread_ts (keys %{$threads}) {
+        if ($self->{'threads_retrieved'}->{$thread_ts}) {
+            next;
+        }
         my $thread_data = $threads->{$thread_ts};
         my $last_ts     = $thread_data->{'last_ts'};
         my $deliveries  = $thread_data->{'deliveries'};
@@ -314,13 +319,7 @@ sub receive_threads
                                             $begin_ts, $last_ts,
                                             \%seen_messages,
                                             $deletions, $write_cb);
-                }
-
-
-                if ($data->{'has_more'}) {
-                    $replies_req =
-                        $ws->get_replies_request($id, $thread_ts, $last_ts);
-                    $runner->add('conversations.replies', $replies_req, $fn);
+                    $self->{'threads_retrieved'}->{$thread_ts} = 1;
                 }
             };
             if (my $error = $@) {

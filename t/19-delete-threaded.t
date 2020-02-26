@@ -8,8 +8,8 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
-my $thread_ts     = (time() - 3).'.0';
-my $thread_msg_ts = (time() - 4).'.0';
+my $thread_ts     = $App::Paws::Test::Server::ts_base_p3.'.0';
+my $thread_msg_ts = $App::Paws::Test::Server::ts_base_p4.'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);

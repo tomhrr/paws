@@ -21,38 +21,6 @@ sub new
     return $self;
 }
 
-sub _process_conversations
-{
-    my ($context, $ws, $runner, $since_ts, $db,
-        $write_cb, $conversation_map, $method_name,
-        $conversations) = @_;
-
-    my @conversation_objs;
-    for my $conversation (@{$conversations}) {
-        my $data = $db->{'conversations'}->{$conversation} || {};
-        my $conversation_obj = App::Paws::ConversationStorage->new(
-            context   => $context,
-            workspace => $ws,
-            write_cb  => $write_cb,
-            name      => $conversation,
-            id        => $conversation_map->{$conversation},
-            data      => $data,
-        );
-        $conversation_obj->$method_name($since_ts);
-        push @conversation_objs, $conversation_obj;
-    }
-    while (not $runner->poke()) {
-        sleep(0.01);
-    }
-    for my $conversation_obj (@conversation_objs) {
-        my $name = $conversation_obj->{'name'};
-        $db->{'conversations'}->{$name} =
-            $conversation_obj->to_data();
-    }
-
-    return 1;
-}
-
 sub _run_internal
 {
     my ($self, $since_ts) = @_;
@@ -109,12 +77,26 @@ sub _run_internal
                $conversation_to_last_ts{$a} }
             @actual_conversations;
 
-    _process_conversations($context, $ws, $runner, $since_ts, $db,
-                           $self->{'write_cb'}, $conversation_map,
-                           'receive_messages',
-                           \@sorted_conversations);
+    my @sorted_css =
+        map { App::Paws::ConversationStorage->new(
+                  context   => $context,
+                  workspace => $ws,
+                  write_cb  => $self->{'write_cb'},
+                  name      => $_,
+                  id        => $conversation_map->{$_},
+                  data      => $db->{'conversations'}->{$_} || {}
+              ) }
+            @sorted_conversations;
 
-    my @new_conversations;
+    for my $cs (@sorted_css) {
+        $cs->receive_messages($since_ts);
+        $cs->receive_threads($since_ts);
+    }
+    while (not $runner->poke()) {
+        sleep(0.01);
+    }
+
+    my @new_css;
     if ($has_cached) {
         $ws->conversations_obj()->retrieve();
         for my $conversation (@{$ws->conversations_obj()->get_list()}) {
@@ -126,20 +108,36 @@ sub _run_internal
         }
         for my $name (keys %{$conversation_map}) {
             if (not $previous_map{$name}) {
-                push @new_conversations, $name;
+                push @new_css,
+                    App::Paws::ConversationStorage->new(
+                        context   => $context,
+                        workspace => $ws,
+                        write_cb  => $self->{'write_cb'},
+                        name      => $name,
+                        id        => $conversation_map->{$name},
+                        data      => $db->{'conversations'}->{$name} || {}
+                    );
             }
         }
-        _process_conversations($context, $ws, $runner, $since_ts, $db,
-                               $self->{'write_cb'}, $conversation_map,
-                               'receive_messages',
-                               \@new_conversations);
+        for my $cs (@new_css) {
+            $cs->receive_messages($since_ts);
+        }
+        while (not $runner->poke()) {
+            sleep(0.01);
+        }
     }
 
-    _process_conversations($context, $ws, $runner, $since_ts, $db,
-                           $self->{'write_cb'}, $conversation_map,
-                           'receive_threads',
-                           [@sorted_conversations,
-                            @new_conversations]);
+    for my $cs (@sorted_css, @new_css) {
+        $cs->receive_threads($since_ts);
+    }
+    while (not $runner->poke()) {
+        sleep(0.01);
+    }
+
+    for my $cs (@sorted_css, @new_css) {
+        my $name = $cs->{'name'};
+        $db->{'conversations'}->{$name} = $cs->to_data();
+    }
 
     $db->{'conversation-map'} = $conversation_map;
 

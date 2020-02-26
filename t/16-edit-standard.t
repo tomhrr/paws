@@ -8,7 +8,7 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
-my $edit_ts = time().'.0';
+my $edit_ts = $App::Paws::Test::Server::ts_base.'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);

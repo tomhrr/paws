@@ -8,7 +8,7 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
-my $msg_ts = (time() - 1).'.0';
+my $msg_ts = $App::Paws::Test::Server::ts_base_p1.'.0';
 
 use File::Temp qw(tempdir);
 use Fcntl qw(SEEK_SET);
