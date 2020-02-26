@@ -115,7 +115,7 @@ sub _get_conversation_for_single_recipient
         return;
     }
 
-    my $conversation_id = $ws->conversations()->name_to_id($name);
+    my $conversation_id = $ws->conversations_obj()->name_to_id($name);
 
     return ($ws, $conversation_id, $thread_ts);
 }
@@ -402,3 +402,102 @@ sub send_queued
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+App::Paws::Sender
+
+=head1 DESCRIPTION
+
+Handles sending mail, either to Slack directly via the API, or to a
+fallback sendmail command.
+
+=head1 CONSTRUCTOR
+
+=over 4
+
+=item B<new>
+
+Arguments (hash):
+
+=over 8
+
+=item bounce_dir
+
+The path to the maildir into which bounce messages
+should be written.
+
+=item context
+
+The current L<App::Paws::Context> object.
+
+=item fallback_sendmail
+
+The path to the sendmail command that should be
+used for all non-Slack messages.
+
+=back
+
+Returns a new instance of L<App::Paws::Sender>.
+
+=back
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item B<submit>
+
+Takes an arrayref of sendmail arguments and a message input filehandle
+as its arguments.  If the message is for Slack, then it is submitted
+to the message queue.  Otherwise, the C<fallback_sendmail> command is
+executed with the sendmail arguments, with the message input data
+passed in as its standard input.
+
+=item B<send_queued>
+
+Sends all queued messages to Slack.  If a transient error is
+encountered during message sending, then the message is requeued.  If
+a permanent error is encountered, then a bounce message is written to
+the maildir at C<bounce_dir>.  If a transient error is seen five times
+for a given message, then a bounce message is written to the maildir
+at C<bounce_dir>, and the message is not requeued.
+
+=back
+
+=head1 AUTHOR
+
+Tom Harrison (C<tomh5908@gmail.com>)
+
+=head1 COPYRIGHT & LICENCE
+
+Copyright (c) 2020, Tom Harrison
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  * Neither the name of the copyright holder nor the
+    names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut

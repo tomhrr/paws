@@ -29,7 +29,7 @@ sub new
     return $self;
 }
 
-sub users
+sub _users
 {
     return $_[0]->{'users'};
 }
@@ -41,7 +41,7 @@ sub _conversation_to_name
     my ($name, $type) = @{$conversation}{qw(name type)};
     if (($type eq 'im') and not $name) {
         my $user_id = $conversation->{'user'};
-        $name = $self->users()->id_to_name($user_id);
+        $name = $self->_users()->id_to_name($user_id);
         if (not $name) {
             warn "Unable to find name for user '$user_id'";
             $name = 'unknown';
@@ -131,6 +131,13 @@ sub _init_conversations
     });
 }
 
+sub get_list
+{
+    my ($self) = @_;
+
+    return $self->{'conversations'};
+}
+
 sub retrieve_nb
 {
     my ($self) = @_;
@@ -202,11 +209,145 @@ sub name_to_id
     return;
 }
 
-sub get_list
-{
-    my ($self) = @_;
-
-    return $self->{'conversations'};
-}
-
 1;
+
+__END__
+
+=head1 NAME
+
+App::Paws::Workspace::Conversations
+
+=head1 DESCRIPTION
+
+Provides for retrieving the available conversations from Slack.
+Actually receiving messages from those conversations is handled by
+L<App::Paws::Receiver>.
+
+=head1 CONSTRUCTOR
+
+=over 4
+
+=item B<new>
+
+Arguments (hash):
+
+=item context
+
+The current L<App::Paws::Context> object.
+
+=item workspace
+
+The L<App::Paws::Workspace> object for the
+workspace.
+
+=item users
+
+The L<App::Paws::Workspace::Users> object for the
+workspace.
+
+=back
+
+Returns a new instance of L<App::Paws::Workspace::Conversations>.  The
+object is also initialised with conversations at this point.  If this
+workspace has been loaded and persisted to local storage before, then
+conversations are loaded into the object from that storage.
+Otherwise, the list of conversations for the workspace is retrieved
+from Slack.
+
+=back
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item B<get_list>
+
+Returns the current conversation list, as an arrayref.  Each entry is
+a hashref containing the following members:
+
+=over 8
+
+=item id
+
+The conversation ID from Slack.
+
+=item name
+
+The conversation name, which is the concatenation
+of the conversation type and either its name from
+Slack (for non-DM conversations), or the name of
+the Slack user (for DM conversations).
+
+=item is_member
+
+A boolean indicating whether the current user is a
+member of the conversation.
+
+=item user
+
+For DM conversations, the user ID of the other
+user in the conversation.
+
+=item type
+
+The conversation type.  One of 'im', 'mpim',
+'group', or 'channel'.
+
+=back
+
+=item B<retrieve_nb>
+
+Retrieve the list of conversations for this workspace from Slack,
+without blocking.  If this object has already been used to retrieve
+that list, then do nothing.
+
+=item B<retrieve>
+
+Retrieve the list of conversations for this workspace from Slack,
+blocking until that is finished.  If this object has already been used
+to retrieve that list, then do nothing.
+
+=item B<name_to_id>
+
+Takes a conversation name (per the return value of C<get_list>) and
+returns a conversation ID.  If the conversation name cannot be found,
+and this object has not already been used to retrieve the list of
+conversations for this workspace from Slack, then retrieve that list
+(blocking) and re-check.
+
+=back
+
+=head1 AUTHOR
+
+Tom Harrison (C<tomh5908@gmail.com>)
+
+=head1 COPYRIGHT & LICENCE
+
+Copyright (c) 2020, Tom Harrison
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  * Neither the name of the copyright holder nor the
+    names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut

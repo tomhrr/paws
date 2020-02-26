@@ -31,7 +31,7 @@ workspaces:
   myworkspace:
     # The API token for the workspace.
     token: "xoxp-..."
-    # The relevant conversations from the workspace.  These have
+    # The conversations to fetch from the workspace.  These have
     # the format {type}/{name}, where {type} is one of 'im',
     # 'mpim', 'group', or 'channel'.
     conversations:

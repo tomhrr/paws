@@ -80,8 +80,8 @@ sub _run_internal
     if ($has_cached) {
         $used_cached = 1;
     } else {
-        $ws->conversations()->retrieve();
-        for my $conversation (@{$ws->conversations()->get_list()}) {
+        $ws->conversations_obj()->retrieve();
+        for my $conversation (@{$ws->conversations_obj()->get_list()}) {
             if (($conversation->{'type'} eq 'im')
                     or ($conversation->{'is_member'})) {
                 my $name = $conversation->{'name'};
@@ -98,7 +98,7 @@ sub _run_internal
             : ($_ =~ /^(.*?)\/\*$/) ? (grep { /^$1\// }
                                             @conversation_names)
                                     : $_ }
-            @{$ws->configured_conversations() || []};
+            @{$ws->conversations() || []};
 
     my %conversation_to_last_ts =
         map { $_ => $db->{'conversations'}->{$_}->{'last_ts'} || 1 }
@@ -116,8 +116,8 @@ sub _run_internal
 
     my @new_conversations;
     if ($has_cached) {
-        $ws->conversations()->retrieve();
-        for my $conversation (@{$ws->conversations()->get_list()}) {
+        $ws->conversations_obj()->retrieve();
+        for my $conversation (@{$ws->conversations_obj()->get_list()}) {
             if (($conversation->{'type'} eq 'im')
                     or ($conversation->{'is_member'})) {
                 my $name = $conversation->{'name'};

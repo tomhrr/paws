@@ -121,6 +121,23 @@ sub _get_user_map
     return \%user_map;
 }
 
+sub get_list
+{
+    my ($self) = @_;
+
+    if ($self->{'user_list'}) {
+        return $self->{'user_list'};
+    }
+
+    my @user_list =
+        map { [ $_->{'real_name'}, $_->{'name'} ] }
+            @{$self->{'users'}};
+
+    $self->{'user_list'} = \@user_list;
+
+    return \@user_list;
+}
+
 sub retrieve_nb
 {
     my ($self) = @_;
@@ -179,21 +196,116 @@ sub name_to_id
     return $user_map->{$name};
 }
 
-sub get_list
-{
-    my ($self) = @_;
-
-    if ($self->{'user_list'}) {
-        return $self->{'user_list'};
-    }
-
-    my @user_list =
-        map { [ $_->{'real_name'}, $_->{'name'} ] }
-            @{$self->{'users'}};
-
-    $self->{'user_list'} = \@user_list;
-
-    return \@user_list;
-}
-
 1;
+
+__END__
+
+=head1 NAME
+
+App::Paws::Workspace::Users
+
+=head1 DESCRIPTION
+
+Provides for retrieving the available users from Slack.
+
+=head1 CONSTRUCTOR
+
+=over 4
+
+=item B<new>
+
+Arguments (hash):
+
+=item context
+
+The current L<App::Paws::Context> object.
+
+=item workspace
+
+The L<App::Paws::Workspace> object for the
+workspace.
+
+=back
+
+Returns a new instance of L<App::Paws::Workspace::Users>.  The object
+is also initialised with users at this point.  If this workspace has
+been loaded and persisted to local storage before, then users are
+loaded into the object from that storage.  Otherwise, the list of
+users for the workspace is retrieved from Slack.
+
+=back
+
+=back
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item B<get_list>
+
+Returns the current user list, as an arrayref.  Each entry is an
+arrayref comprising the user's real name (e.g. 'John Smith') and their
+username (e.g. 'jsmith').
+
+=item B<retrieve_nb>
+
+Retrieve the list of users for this workspace from Slack, without
+blocking.  If this object has already been used to retrieve that list,
+then do nothing.
+
+=item B<retrieve>
+
+Retrieve the list of users for this workspace from Slack, blocking
+until that is finished.  If this object has already been used to
+retrieve that list, then do nothing.
+
+=item B<id_to_name>
+
+Takes a user ID and returns a username (per the return value of
+C<get_list>).  If the user ID cannot be found, and this object has not
+already been used to retrieve the list of users for this workspace
+from Slack, then retrieve that list (blocking) and re-check.
+
+=item B<name_to_id>
+
+Takes a username (per the return value of C<get_list>) and returns a
+user ID.  If the user name cannot be found, and this object has not
+already been used to retrieve the list of users for this workspace
+from Slack, then retrieve that list (blocking) and re-check.
+
+=back
+
+=head1 AUTHOR
+
+Tom Harrison (C<tomh5908@gmail.com>)
+
+=head1 COPYRIGHT & LICENCE
+
+Copyright (c) 2020, Tom Harrison
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  * Neither the name of the copyright holder nor the
+    names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut
