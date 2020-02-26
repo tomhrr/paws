@@ -209,6 +209,13 @@ sub receive_messages
                                         $begin_ts, $last_ts,
                                         \%seen_messages,
                                         $deletions, $write_cb);
+
+                my @unneeded_deliveries =
+                    grep { $_ < ($last_ts
+                                    - $ws->modification_window()
+                                    - UNNEEDED_BUFFER()) }
+                        keys %{$deliveries};
+                delete @{$deliveries}{@unneeded_deliveries};
             }
         };
         if (my $error = $@) {
@@ -216,13 +223,6 @@ sub receive_messages
         }
         $self->{'last_ts'} = $last_ts;
     });
-
-    my @unneeded_deliveries =
-        grep { $_ < ($last_ts
-                        - $ws->modification_window()
-                        - UNNEEDED_BUFFER()) }
-            keys %{$deliveries};
-    delete @{$deliveries}{@unneeded_deliveries};
 
     return 1;
 }
@@ -320,6 +320,19 @@ sub receive_threads
                                             \%seen_messages,
                                             $deletions, $write_cb);
                     $self->{'threads_retrieved'}->{$thread_ts} = 1;
+
+                    my @unneeded_deliveries =
+                        grep { $_ < ($last_ts
+                                        - $ws->modification_window()
+                                        - UNNEEDED_BUFFER()) }
+                            keys %{$deliveries};
+                    delete @{$deliveries}{@unneeded_deliveries};
+
+                    if (($last_ts != 1)
+                            and ($last_ts < (time() - $ws->thread_expiry()
+                                                    - UNNEEDED_BUFFER()))) {
+                        delete $threads->{$thread_ts};
+                    }
                 }
             };
             if (my $error = $@) {
@@ -327,22 +340,7 @@ sub receive_threads
             }
             $thread_data->{'last_ts'} = $last_ts;
         });
-
-        my @unneeded_deliveries =
-            grep { $_ < ($last_ts
-                            - $ws->modification_window()
-                            - UNNEEDED_BUFFER()) }
-                keys %{$deliveries};
-        delete @{$deliveries}{@unneeded_deliveries};
     }
-
-    my @unneeded_threads =
-        grep { my $last_ts = $threads->{$_}->{'last_ts'};
-               ($last_ts != 1)
-                    and ($last_ts < (time() - $ws->thread_expiry()
-                                            - UNNEEDED_BUFFER())) }
-            keys %{$threads};
-    delete @{$threads}{@unneeded_threads};
 
     return 1;
 }
