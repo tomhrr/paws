@@ -216,6 +216,8 @@ Provides for retrieving the available users from Slack.
 
 Arguments (hash):
 
+=over 8
+
 =item context
 
 The current L<App::Paws::Context> object.
@@ -232,8 +234,6 @@ is also initialised with users at this point.  If this workspace has
 been loaded and persisted to local storage before, then users are
 loaded into the object from that storage.  Otherwise, the list of
 users for the workspace is retrieved from Slack.
-
-=back
 
 =back
 

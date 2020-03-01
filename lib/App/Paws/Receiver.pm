@@ -287,6 +287,12 @@ Iterates over the conversations for the current workspace, retrieving
 new messages, and writing them to disk per the C<write_cb> coderef.
 The lower-bound timestamp is used to skip messages in the history.
 
+=item B<run_for_subset>
+
+Takes a hashref mapping from a conversation name to an arrayref of
+thread timestamps.  Operates in the same way as L<run>, except just
+for these conversations and threads.
+
 =back
 
 =head1 AUTHOR

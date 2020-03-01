@@ -248,6 +248,8 @@ L<App::Paws::Receiver>.
 
 Arguments (hash):
 
+=over 8
+
 =item context
 
 The current L<App::Paws::Context> object.
