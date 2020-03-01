@@ -8,13 +8,9 @@ use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
-
-use File::Temp qw(tempdir);
-use Fcntl qw(SEEK_SET);
-use JSON::XS qw(encode_json);
-use List::Util qw(first);
-use MIME::Parser;
-use YAML;
+use App::Paws::Test::Utils qw(test_setup
+                              get_files_in_directory
+                              write_message);
 
 use Test::More tests => 3;
 
@@ -22,87 +18,24 @@ my $server = App::Paws::Test::Server->new();
 $server->run();
 my $url = 'http://localhost:'.$server->{'port'};
 
-my $mail_dir = tempdir();
-my $bounce_dir = tempdir();
-for my $dir (qw(cur new tmp)) {
-    system("mkdir $mail_dir/$dir");
-    system("mkdir $bounce_dir/$dir");
-}
-
-my $config = {
-    domain_name => 'slack.alt',
-    user_email => 'test@example.com',
-    workspaces => {
-        test => {
-            token => 'xoxp-asdf',
-            conversations => [
-                'channel/general',
-                'channel/work',
-                'im/slackbot',
-                'im/user3',
-            ],
-        }
-    },
-    sender => { 
-        bounce_dir => $bounce_dir,
-        fallback_sendmail => '/bin/true',
-    },
-    receivers => [ {
-        type      => 'maildir',
-        name      => 'initial',
-        workspace => 'test',
-        path      => $mail_dir,
-    } ],
-    rate_limiting => {
-        initial => 1000,
-    },
-};
-
-my $config_path = File::Temp->new();
-print $config_path YAML::Dump($config);
-$config_path->flush();
-$App::Paws::CONFIG_PATH = $config_path->filename();
-
-my $queue_dir = tempdir();
-$App::Paws::QUEUE_DIR = $queue_dir;
-
-my $db_dir = tempdir();
-$App::Paws::DB_DIR = $db_dir;
-
-$App::Paws::Context::SLACK_BASE_URL = $url;
+my ($mail_dir, $bounce_dir, $config, $config_path) =
+    test_setup($url);
 
 my $paws = App::Paws->new();
 $paws->receive(1);
-my @files = `find $mail_dir -type f`;
+my @files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Got 11 mails');
 
-my $mail4 = File::Temp->new();
-print $mail4 q(Content-Type: text/plain; charset="UTF-8"
-Content-Disposition: inline
-Content-Transfer-Encoding: quoted-printable
-MIME-Version: 1.0
-Date: Thu, 16 May 2019 15:39:47 +1000
-From: somewhere@example.org
-To: im/user4@test.slack.alt
-Subject: Message from im/slackbot
-Message-ID: <1557985187.000100.im/slackbot@test.slack.alt>
-Reply-To: im/slackbot@test.slack.alt
-
-If you're not sure how to do something in Slack, *just type your question below*.
-
-Or press these buttons to learn about the following topics:);
-$mail4->flush();
-$mail4->seek(0, SEEK_SET);
-
-$paws->send([], $mail4);
+my $mail = write_message('asdf@example.org', 'im/user4', 'asdf');
+$paws->send([], $mail);
 $paws->send_queued();
 
-$paws->receive(50);
-@files = `find $mail_dir -type f`;
+$paws->receive(20);
+@files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Still only 11 mails');
 
-$paws->receive(60);
-@files = `find $bounce_dir -type f`;
+$paws->receive(40);
+@files = get_files_in_directory($bounce_dir);
 is(@files, 1, 'Message correctly recorded as bounce');
 
 $server->shutdown();

@@ -103,6 +103,13 @@ sub write_message
 {
     my ($from, $to, $content) = @_;
 
+    if ($from !~ /\@/) {
+        $from .= '@test.slack.alt';
+    }
+    if ($to !~ /\@/) {
+        $to .= '@test.slack.alt';
+    }
+
     my $msg_ts = time();
     my $mail = File::Temp->new();
     print $mail <<EOF;
@@ -111,11 +118,11 @@ Content-Disposition: inline
 Content-Transfer-Encoding: quoted-printable
 MIME-Version: 1.0
 Date: Thu, 16 May 2019 15:39:47 +1000
-From: $from\@test.slack.alt
-To: $to\@test.slack.alt
+From: $from
+To: $to
 Subject: Message from im/slackbot
 Message-ID: <$msg_ts.000100.im/slackbot\@test.slack.alt>
-Reply-To: $to\@test.slack.alt
+Reply-To: $to
 
 $content
 EOF
