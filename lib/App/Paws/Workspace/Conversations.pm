@@ -87,14 +87,14 @@ sub _init_conversations
 
         if (not $res->is_success()) {
             my $res_str = $res->as_string();
-            chomp $res_str;
+            $res_str =~ s/(\r?\n)+$//g;
             print STDERR "Unable to process response: $res_str\n";
             return;
         }
         my $data = decode_json($res->content());
         if ($data->{'error'}) {
             my $res_str = $res->as_string();
-            chomp $res_str;
+            $res_str =~ s/(\r?\n)+$//g;
             print STDERR "Error in response: $res_str\n";
             return;
         }
