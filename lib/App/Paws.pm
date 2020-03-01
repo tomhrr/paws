@@ -174,11 +174,14 @@ sub receive
     my $extra = $persist_time - ($minutes % $persist_time);
     $runtime->add(minutes => $extra);
     $runtime->set(second => 0);
-    my $first_interval =
-        $runtime->subtract_datetime($now)->in_units('seconds');
+    my ($d, $m, $s) =
+        $runtime->subtract_datetime($now)->in_units(
+            'days', 'minutes', 'seconds'
+        );
+    $m += $d * 24 * 60;
+    $s += $m * 60;
+    my $first_interval = $s;
     my $ping_timeout = max(600, ($persist_time * 60 * 2));
-    my $time = time();
-    print STDERR "$time, $first_interval, ".($persist_time * 60)."\n";
 
     my $timer = IO::Async::Timer::Periodic->new(
         first_interval => $first_interval,

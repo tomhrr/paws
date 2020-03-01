@@ -19,7 +19,7 @@ Options:
                           sent on this date or later.
     --persist={n}         After receiving the initial set of messages,
                           listen for new messages via the RTM API and
-                          retrieve them every {n} minutes.
+                          retrieve them every {n} minutes (1-59).
 
 --since effectively sets the 'last received timestamp' for a
 conversation to the given date (except when the date precedes that
@@ -28,8 +28,9 @@ timestamp).  This means that subsequent receive calls made after using
 as a result of having used it.
 
 --persist will align the fetch time interval to the actual time.  For
-example, if called with an argument of 10 at 9:05am, it will try to
-fetch at 9:10am, and then at 9:20am, and so on.
+example, if called with an argument of 10, then if the initial fetch
+finishes at 9:05am, it will try to fetch at 9:10am, and then at
+9:20am, and so on.
 EOF
     exit(10);
 }
@@ -43,7 +44,7 @@ my $res = GetOptions("name=s"    => \$name,
 if (not $res) {
     usage();
 }
-if ((defined $persist) and ($persist == 0)) {
+if ((defined $persist) and (($persist == 0) or ($persist > 59))) {
     usage();
 }
 
