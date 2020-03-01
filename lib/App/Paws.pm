@@ -3,15 +3,21 @@ package App::Paws;
 use warnings;
 use strict;
 
+use Cwd;
+use DateTime;
+use File::Slurp qw(read_file write_file);
+use IO::Async::Loop;
+use IO::Async::Timer::Periodic;
+use JSON::XS qw(decode_json);
+use List::Util qw(first);
+use Net::Async::WebSocket::Client;
+use YAML;
+
 use App::Paws::Context;
-use App::Paws::Sender;
 use App::Paws::Receiver::maildir;
 use App::Paws::Receiver::MDA;
-
-use Cwd;
-use File::Slurp qw(read_file write_file);
-use List::Util qw(first);
-use YAML;
+use App::Paws::Sender;
+use App::Paws::Utils qw(standard_get_request);
 
 our $CONFIG_DIR  = $ENV{'HOME'}.'/.paws';
 our $CONFIG_PATH = $CONFIG_DIR.'/config';
@@ -68,7 +74,7 @@ sub send_queued
 
 sub receive
 {
-    my ($self, $counter, $name, $since_ts) = @_;
+    my ($self, $counter, $name, $since_ts, $persist, $persist_time) = @_;
 
     my $context = $self->{'context'};
     my $receiver_specs = $context->{'config'}->{'receivers'};
@@ -99,7 +105,103 @@ sub receive
         $receiver->run($counter, $since_ts);
     }
 
-    return 1;
+    if (not $persist) {
+        return 1;
+    }
+
+    my %ws_to_receiver =
+        map { $_->{'workspace'}->name() => $_ }
+            @receivers;
+    my %ws_to_conversation;
+    my %ws_to_conversation_to_thread;
+
+    my $loop = IO::Async::Loop->new();
+    for my $receiver (@receivers) {
+        my $ws = $receiver->{'workspace'};
+        my $ws_name = $ws->name();
+        my $rtm_request =
+            standard_get_request($context, $ws, '/rtm.connect');
+        my $ua = $context->ua();
+        my $rtm_res = $ua->request($rtm_request);
+        if (not $rtm_res->is_success()) {
+            print STDERR "Unable to connect to RTM for workspace ".
+                         "'$ws_name': ".
+                         $rtm_res->as_string();
+            next;
+        }
+        my $data = decode_json($rtm_res->decoded_content());
+        if (not $data->{'ok'}) {
+            print STDERR "Unable to connect to RTM for workspace ".
+                         "'$ws_name': ".
+                         $rtm_res->as_string();
+            next;
+        }
+        my $ws_url = $data->{'url'};
+
+        my $client = Net::Async::WebSocket::Client->new(
+            on_text_frame => sub {
+                my ($self, $frame) = @_;
+                my $data = eval { decode_json($frame) };
+                if (my $error = $@) {
+                    print STDERR "Unable to parse RTM message\n";
+                } elsif ($data->{'type'} eq 'message') {
+                    $ws_to_conversation{$ws_name}
+                        ->{$data->{'channel'}} = 1;
+                    if ($data->{'thread_ts'}) {
+                        $ws_to_conversation_to_thread{$ws_name}
+                            ->{$data->{'channel'}}
+                            ->{$data->{'thread_ts'}} = 1;
+                    }
+                }
+            }
+        );
+        $loop->add($client);
+        $client->connect(url => $ws_url)->get();
+    }
+
+    my $now = DateTime->now(time_zone => 'local');
+    my $runtime = $now->clone();
+    my $minutes = $runtime->minute();
+    my $extra = $persist_time - ($minutes % $persist_time);
+    $runtime->add(minutes => $extra);
+    $runtime->set(second => 0);
+    my $first_interval =
+        $runtime->subtract_datetime($now)->in_units('seconds');
+
+    my $timer = IO::Async::Timer::Periodic->new(
+        first_interval => $first_interval,
+        interval       => ($persist_time * 60),
+        on_tick        => sub {
+            eval {
+                for my $ws_name (keys %ws_to_conversation) {
+                    my $conversation_to_threads =
+                        $ws_to_conversation_to_thread{$ws_name};
+                    my $receiver = $ws_to_receiver{$ws_name};
+                    my $ws = $receiver->{'workspace'};
+                    my @conversation_ids = keys %{$ws_to_conversation{$ws_name}};
+                    my %conversation_name_to_threads;
+                    for my $conversation_id (@conversation_ids) {
+                        my $conversation_name =
+                            $ws->conversations_obj()->id_to_name($conversation_id);
+                        my @threads = keys
+                            %{$conversation_to_threads->{$conversation_id} || {}};
+                        $conversation_name_to_threads{$conversation_name} =
+                            \@threads;
+                    }
+                    $receiver->run(undef, undef, \%conversation_name_to_threads);
+                }
+                %ws_to_conversation = ();
+                %ws_to_conversation_to_thread = ();
+            };
+            if (my $error = $@) {
+                print STDERR "Unable to process messages: $error";
+            }
+        }
+    );
+    $timer->start();
+    $loop->add($timer);
+
+    $loop->run();
 }
 
 sub aliases

@@ -17,21 +17,33 @@ Options:
     --name={name}         Receive messages for the named receiver only.
     --since={YYYY-MM-DD}  Only receive messages that were originally
                           sent on this date or later.
+    --persist={n}         After receiving the initial set of messages,
+                          listen for new messages via the RTM API and
+                          retrieve them every {n} minutes.
 
 --since effectively sets the 'last received timestamp' for a
 conversation to the given date (except when the date precedes that
 timestamp).  This means that subsequent receive calls made after using
 --since will not attempt to fill in any gaps in the history that occur
 as a result of having used it.
+
+--persist will align the fetch time interval to the actual time.  For
+example, if called with an argument of 10 at 9:05am, it will try to
+fetch at 9:10am, and then at 9:20am, and so on.
 EOF
     exit(10);
 }
 
 my $name;
 my $since;
-my $res = GetOptions("name=s"  => \$name,
-                     "since=s" => \$since);
+my $persist;
+my $res = GetOptions("name=s"    => \$name,
+                     "since=s"   => \$since,
+                     "persist=d" => \$persist);
 if (not $res) {
+    usage();
+}
+if ((defined $persist) and ($persist == 0)) {
     usage();
 }
 
@@ -47,6 +59,7 @@ if ($since) {
 }
 
 my $paws = App::Paws->new();
-$paws->receive(1, map { $_ ? $_ : undef } ($name, $since_ts));
+$paws->receive(1, (map { $_ ? $_ : undef } ($name, $since_ts)),
+                  ($persist ? (1, $persist) : ()));
 
 1;

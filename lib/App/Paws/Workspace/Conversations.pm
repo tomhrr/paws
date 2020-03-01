@@ -209,6 +209,23 @@ sub name_to_id
     return;
 }
 
+sub id_to_name
+{
+    my ($self, $id) = @_;
+
+    my $conversation_map = $self->_get_conversation_map();
+    my %conversation_map_by_id = reverse %{$conversation_map};
+    if (exists $conversation_map_by_id{$id}) {
+        return $conversation_map_by_id{$id};
+    }
+    if (not $self->{'retrieved'}) {
+        $self->retrieve();
+        return $self->id_to_name($id);
+    }
+
+    return;
+}
+
 1;
 
 __END__
@@ -314,6 +331,13 @@ returns a conversation ID.  If the conversation name cannot be found,
 and this object has not already been used to retrieve the list of
 conversations for this workspace from Slack, then retrieve that list
 (blocking) and re-check.
+
+=item B<id_to_name>
+
+Takes a conversation ID (per the Slack API) and returns a conversation
+name.  If the conversation ID cannot be found, and this object has not
+already been used to retrieve the list of conversations for this
+workspace from Slack, then retrieve that list (blocking) and re-check.
 
 =back
 

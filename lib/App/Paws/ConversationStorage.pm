@@ -232,7 +232,7 @@ sub receive_messages
 
 sub receive_threads
 {
-    my ($self, $since_ts) = @_;
+    my ($self, $since_ts, $thread_ts) = @_;
 
     my $context    = $self->{'context'};
     my $ws         = $self->{'workspace'};
@@ -249,7 +249,8 @@ sub receive_threads
         $self->{'last_ts'} = $last_ts;
     }
 
-    for my $thread_ts (keys %{$threads}) {
+    my @thread_tss = ($thread_ts) ? ($thread_ts) : (keys %{$threads});
+    for my $thread_ts (@thread_tss) {
         if ($self->{'threads_retrieved'}->{$thread_ts}) {
             next;
         }

@@ -161,6 +161,72 @@ sub run
     return 1;
 }
 
+sub run_for_subset
+{
+    my ($self, $conversations_and_threads) = @_;
+
+    my $db_dir = $self->{'context'}->db_directory();
+    my $lock_path = $db_dir.'/'.$self->{'name'}.'-lock';
+    my $lock = App::Paws::Lock->new(path => $lock_path);
+    eval {
+        my $context = $self->{'context'};
+        my $ws      = $self->{'workspace'};
+        my $to      = $context->user_email();
+        my $name    = $self->{'name'};
+        my $runner  = $self->{'context'}->runner();
+
+        my $path = $context->db_directory().'/'.$name.'-receiver-db';
+        if (not -e $path) {
+            write_file($path, encode_json({
+                'conversation-map' => {},
+                'conversations'    => {},
+            }));
+        }
+        my $db = decode_json(read_file($path));
+        my $conversation_map = $db->{'conversation-map'};
+
+        my @css;
+        for my $conversation_name (keys %{$conversations_and_threads}) {
+            my $cs =
+                App::Paws::ConversationStorage->new(
+                    context   => $context,
+                    workspace => $ws,
+                    write_cb  => $self->{'write_cb'},
+                    name      => $conversation_name,
+                    id        => $conversation_map->{$conversation_name},
+                    data      => $db->{'conversations'}->{$conversation_name} || {}
+                );
+            $cs->receive_messages();
+            my @threads =
+                @{$conversations_and_threads->{$conversation_name}};
+            for my $thread_ts (@threads) {
+                $cs->receive_threads($thread_ts);
+            }
+            push @css, $cs;
+        }
+
+        while (not $runner->poke()) {
+            sleep(0.01);
+        }
+
+        for my $cs (@css) {
+            my $name = $cs->{'name'};
+            $db->{'conversations'}->{$name} = $cs->to_data();
+        }
+
+        $db->{'conversation-map'} = $conversation_map;
+
+        write_file($path, encode_json($db));
+    };
+    my $error = $@;
+    $lock->unlock();
+    if ($error) {
+        print STDERR "Unable to receive messages: $error\n";
+        return;
+    }
+    return 1;
+}
+
 1;
 
 __END__

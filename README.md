@@ -100,6 +100,14 @@ then you can use the `--since` flag to only pull messages that were
 originally sent on the given date or later (e.g. `paws-receive
 --since=2020-01-01`).
 
+`paws-receive` takes an optional `--persist={n}` argument.  If provided,
+then instead of exiting once messages have been received, it will open
+an RTM API connection and use that to listen for new messages.  The
+argument to `--persist` is the number of minutes to use as an interval
+for receiving new messages.  If the workspace is configured for many
+channels that are only updated infrequently, using `--persist` will be
+much more efficient than simply calling `paws-receive` periodically.
+
 ### Receivers
 
 #### maildir

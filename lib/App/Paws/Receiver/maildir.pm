@@ -29,7 +29,7 @@ sub workspace
 
 sub run
 {
-    my ($self, $counter, $since_ts) = @_;
+    my ($self, $counter, $since_ts, $conversation_data) = @_;
 
     $counter ||= 1;
 
@@ -53,7 +53,11 @@ sub run
         }
     );
 
-    $receiver->run($since_ts);
+    if ($conversation_data) {
+        $receiver->run_for_subset($conversation_data);
+    } else {
+        $receiver->run($since_ts);
+    }
     return 1;
 }
 
