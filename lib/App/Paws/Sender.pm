@@ -115,7 +115,8 @@ sub _get_conversation_for_single_recipient
         return;
     }
 
-    my $conversation_id = $ws->conversations_obj()->name_to_id($name);
+    my $conversation_id =
+        $ws->conversations_obj()->name_to_id("$type/$name");
 
     return ($ws, $conversation_id, $thread_ts);
 }
