@@ -116,9 +116,12 @@ sub receive
     my %ws_to_conversation_to_thread;
 
     my $loop = IO::Async::Loop->new();
+    my @clients;
+    my %ws_to_pong;
     for my $receiver (@receivers) {
         my $ws = $receiver->{'workspace'};
         my $ws_name = $ws->name();
+        $ws_to_pong{$ws_name} = 0;
         my $rtm_request =
             standard_get_request($context, $ws, '/rtm.connect');
         my $ua = $context->ua();
@@ -153,10 +156,16 @@ sub receive
                             ->{$data->{'thread_ts'}} = 1;
                     }
                 }
-            }
+            },
+            on_pong_frame => sub {
+                $ws_to_pong{$ws_name} = time();
+            },
         );
         $loop->add($client);
-        $client->connect(url => $ws_url)->get();
+        $client->connect(url => $ws_url)->then(
+            sub { $client->send_ping_frame(); }
+        )->get();
+        push @clients, $client;
     }
 
     my $now = DateTime->now(time_zone => 'local');
@@ -173,6 +182,15 @@ sub receive
         interval       => ($persist_time * 60),
         on_tick        => sub {
             eval {
+                my @pong_timestamps = sort values %ws_to_pong;
+                if ($pong_timestamps[0] < (time() - 300)) {
+                    print STDERR "No ping response from server in five ".
+                                 "minutes, exiting.\n";
+                    exit(1);
+                }
+                for my $client (@clients) {
+                    $client->send_ping_frame();
+                }
                 for my $ws_name (keys %ws_to_conversation) {
                     my $conversation_to_threads =
                         $ws_to_conversation_to_thread{$ws_name};

@@ -39,7 +39,7 @@ my $since;
 my $persist;
 my $res = GetOptions("name=s"    => \$name,
                      "since=s"   => \$since,
-                     "persist=d" => \$persist);
+                     "persist=i" => \$persist);
 if (not $res) {
     usage();
 }
