@@ -9,7 +9,7 @@ use File::Slurp qw(read_file write_file);
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use JSON::XS qw(decode_json);
-use List::Util qw(first);
+use List::Util qw(first max);
 use Net::Async::WebSocket::Client;
 use YAML;
 
@@ -176,6 +176,9 @@ sub receive
     $runtime->set(second => 0);
     my $first_interval =
         $runtime->subtract_datetime($now)->in_units('seconds');
+    my $ping_timeout = max(600, ($persist_time * 60 * 2));
+    my $time = time();
+    print STDERR "$time, $first_interval, ".($persist_time * 60)."\n";
 
     my $timer = IO::Async::Timer::Periodic->new(
         first_interval => $first_interval,
@@ -183,9 +186,9 @@ sub receive
         on_tick        => sub {
             eval {
                 my @pong_timestamps = sort values %ws_to_pong;
-                if ($pong_timestamps[0] < (time() - 300)) {
-                    print STDERR "No ping response from server in five ".
-                                 "minutes, exiting.\n";
+                if ($pong_timestamps[0] < (time() - $ping_timeout)) {
+                    print STDERR "No ping response within ".
+                                 "${ping_timeout}s, exiting.\n";
                     exit(1);
                 }
                 for my $client (@clients) {
