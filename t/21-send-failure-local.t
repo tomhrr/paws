@@ -3,19 +3,17 @@
 use warnings;
 use strict;
 
+use Fcntl qw(SEEK_SET);
+use IO::Capture::Stderr;
+
 use App::Paws;
 use App::Paws::Context;
 
 use lib './t/lib';
 use App::Paws::Test::Server;
-
-use IO::Capture::Stderr;
-use File::Temp qw(tempdir);
-use Fcntl qw(SEEK_SET);
-use JSON::XS qw(encode_json);
-use List::Util qw(first);
-use MIME::Parser;
-use YAML;
+use App::Paws::Test::Utils qw(test_setup
+                              get_files_in_directory
+                              write_message);
 
 use Test::More tests => 11;
 
@@ -23,58 +21,12 @@ my $server = App::Paws::Test::Server->new();
 $server->run();
 my $url = 'http://localhost:'.$server->{'port'};
 
-my $mail_dir = tempdir();
-my $bounce_dir = tempdir();
-for my $dir (qw(cur new tmp)) {
-    system("mkdir $mail_dir/$dir");
-    system("mkdir $bounce_dir/$dir");
-}
-
-my $config = {
-    domain_name => 'slack.alt',
-    user_email => 'test@example.com',
-    workspaces => {
-        test => {
-            token => 'xoxp-asdf',
-            conversations => [
-                'channel/general',
-                'channel/work',
-                'im/slackbot',
-                'im/user3',
-            ],
-        }
-    },
-    sender => { 
-        bounce_dir => $bounce_dir,
-        fallback_sendmail => '/bin/true',
-    },
-    receivers => [ {
-        type      => 'maildir',
-        name      => 'initial',
-        workspace => 'test',
-        path      => $mail_dir,
-    } ],
-    rate_limiting => {
-        initial => 1000,
-    },
-};
-
-my $config_path = File::Temp->new();
-print $config_path YAML::Dump($config);
-$config_path->flush();
-$App::Paws::CONFIG_PATH = $config_path->filename();
-
-my $queue_dir = tempdir();
-$App::Paws::QUEUE_DIR = $queue_dir;
-
-my $db_dir = tempdir();
-$App::Paws::DB_DIR = $db_dir;
-
-$App::Paws::Context::SLACK_BASE_URL = $url;
+my ($mail_dir, $bounce_dir, $config, $config_path) =
+    test_setup($url);
 
 my $paws = App::Paws->new();
 $paws->receive(1);
-my @files = `find $mail_dir -type f`;
+my @files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Got 11 mails');
 
 my $make_msg = sub {
@@ -98,17 +50,18 @@ $text);
     return $mail;
 };
 
-my $mail1 = $make_msg->(time().'.01', 'Internal response');
-$paws->send([], $mail1);
+my $mail = write_message('slackbot', 'im/slackbot', 'Internal response');
+$paws->send([], $mail);
 
 my $cap = IO::Capture::Stderr->new();
 $cap->start();
 $paws->send_queued();
 $cap->stop();
+
 $paws->receive(20);
-@files = `find $mail_dir -type f`;
+@files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Unable to send mail');
-my @bounces = `find $bounce_dir -type f`;
+my @bounces = get_files_in_directory($bounce_dir);
 is(@bounces, 0, 'No bounces yet');
 
 for (1..3) {
@@ -117,32 +70,33 @@ for (1..3) {
     $cap->stop();
 }
 
-$paws->receive(30);
-@files = `find $mail_dir -type f`;
+$paws->receive(40);
+@files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Still unable to send mail');
-@bounces = `find $bounce_dir -type f`;
+@bounces = get_files_in_directory($bounce_dir);
 is(@bounces, 0, 'No bounces yet');
 
 $cap->start();
 $paws->send_queued();
 $cap->stop();
 
-$paws->receive(40);
-@files = `find $mail_dir -type f`;
+$paws->receive(60);
+@files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Still unable to send mail');
-@bounces = `find $bounce_dir -type f`;
+@bounces = get_files_in_directory($bounce_dir);
 is(@bounces, 1, 'Got bounce after five attempts');
 
-my $mail2 = $make_msg->(time().'.02', 'Status: 404');
+my $mail2 = write_message('slackbot', 'im/slackbot', 'Status: 404');
 $paws->send([], $mail2);
 
 $cap->start();
 $paws->send_queued();
 $cap->stop();
-$paws->receive(50);
-@files = `find $mail_dir -type f`;
+
+$paws->receive(80);
+@files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Unable to send mail');
-@bounces = `find $bounce_dir -type f`;
+@bounces = get_files_in_directory($bounce_dir);
 is(@bounces, 2, 'Got immediate bounce for remote problem');
 
 my $mail3 = File::Temp->new();
@@ -181,10 +135,11 @@ $paws->send([], $mail3);
 $cap->start();
 $paws->send_queued();
 $cap->stop();
-$paws->receive(60);
-@files = `find $mail_dir -type f`;
+
+$paws->receive(100);
+@files = get_files_in_directory($mail_dir);
 is(@files, 12, 'Sent one message successfully');
-@bounces = `find $bounce_dir -type f`;
+@bounces = get_files_in_directory($bounce_dir);
 is(@bounces, 3, 'But got a bounce for the problematic attachment');
 
 $server->shutdown();
