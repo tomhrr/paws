@@ -110,6 +110,9 @@ configured for many channels that are only updated infrequently, using
 `paws-receive` periodically.  If using `--persist` in a scheduled job,
 `flock(1)` and its `--nonblock` argument may be useful.
 
+For each command, if the `PAWS\_DEBUG` environment variable is set to
+a true value, then debug messages will be printed to standard error.
+
 ### Receivers
 
 #### maildir

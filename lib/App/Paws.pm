@@ -14,6 +14,7 @@ use Net::Async::WebSocket::Client;
 use YAML;
 
 use App::Paws::Context;
+use App::Paws::Debug qw(debug);
 use App::Paws::Receiver::maildir;
 use App::Paws::Receiver::MDA;
 use App::Paws::Sender;
@@ -23,6 +24,8 @@ our $CONFIG_DIR  = $ENV{'HOME'}.'/.paws';
 our $CONFIG_PATH = $CONFIG_DIR.'/config';
 our $QUEUE_DIR   = $CONFIG_DIR.'/queue';
 our $DB_DIR      = $CONFIG_DIR.'/db';
+
+our $PING_TIMEOUT = 30;
 
 our $VERSION = '0.1';
 
@@ -109,23 +112,22 @@ sub receive
         return 1;
     }
 
-    my $start = time();
-    print STDERR "Beginning persist process at $start\n";
+    my $start = DateTime->now(time_zone => 'local');
+    debug("Beginning persist process at ".$start->strftime('%F %T'));
 
     my %ws_to_receiver =
         map { $_->{'workspace'}->name() => $_ }
             @receivers;
+
     my %ws_to_conversation;
     my %ws_to_conversation_to_thread;
-
-    my $loop = IO::Async::Loop->new();
     my %ws_to_current_client;
     my %ws_to_old_clients;
-    my %client_to_start;
-    my %client_to_ping;
-    my %client_to_pong;
+    my %client_to_details;
     my %id_to_client;
     my $id = 1;
+
+    my $loop = IO::Async::Loop->new();
 
     my $client_timer = IO::Async::Timer::Periodic->new(
         first_interval => 0,
@@ -134,7 +136,7 @@ sub receive
             for my $receiver (@receivers) {
                 my $ws = $receiver->{'workspace'};
                 my $ws_name = $ws->name();
-                print STDERR "Starting new client for $ws_name\n";
+                debug("Starting new client for $ws_name");
                 my $rtm_request =
                     standard_get_request($context, $ws, '/rtm.connect');
                 my $ua = $context->ua();
@@ -158,7 +160,7 @@ sub receive
                 my $client = Net::Async::WebSocket::Client->new(
                     on_text_frame => sub {
                         my ($self, $frame) = @_;
-                        print STDERR "Got text frame for $ws_name ($new_id)\n";
+                        debug("Got text frame for $ws_name ($new_id): $frame");
                         my $data = eval { decode_json($frame) };
                         if (my $error = $@) {
                             print STDERR "Unable to parse RTM message\n";
@@ -173,9 +175,11 @@ sub receive
                         }
                     },
                     on_pong_frame => sub {
-                        $client_to_pong{$id_to_client{$new_id}} = time();
-                        print STDERR "Got ping response for $ws_name ($new_id) ".
-                                    "at ".$client_to_pong{$id_to_client{$new_id}}."\n";
+                        my $now = time();
+                        my $client = $id_to_client{$new_id};
+                        $client_to_details{$client}->{'pong'} = $now;
+                        debug("Got ping response for $ws_name ".
+                              "($new_id) at $now");
                     },
                 );
                 $id_to_client{$new_id} = $client;
@@ -183,9 +187,9 @@ sub receive
                 $client->connect(url => $ws_url)->then(
                     sub {
                         my $now = time();
-                        $client_to_start{$client} = $now;
-                        print STDERR "Sending ping frame to client at $now.\n";
-                        $client_to_ping{$client} = $now;
+                        $client_to_details{$client}->{'start'} = $now;
+                        debug("Sending ping frame to client at $now");
+                        $client_to_details{$client}->{'ping'} = $now;
                         $client->send_ping_frame();
                     }
                 )->get();
@@ -195,39 +199,36 @@ sub receive
                          $ws_to_current_client{$ws_name};
                 }
                 $ws_to_current_client{$ws_name} = $client;
-                print STDERR "Started new client for $ws_name ($new_id)\n";
+                debug("Started new client for $ws_name ($new_id)");
             }
         }
     );
 
-    my $now = DateTime->now(time_zone => 'local');
-    my $runtime = $now->clone();
+    my $runtime = $start->clone();
     my $minutes = $runtime->minute();
     my $extra = $persist_time - ($minutes % $persist_time);
     $runtime->add(minutes => $extra);
     $runtime->set(second => 0);
     my ($d, $m, $s) =
-        $runtime->subtract_datetime($now)->in_units(
+        $runtime->subtract_datetime($start)->in_units(
             'days', 'minutes', 'seconds'
         );
     $m += $d * 24 * 60;
     $s += $m * 60;
     my $first_interval = $s;
-    #my $ping_timeout = max(600, ($persist_time * 60 * 2));
-    my $ping_timeout = 30;
 
     my $ping_timer = IO::Async::Timer::Periodic->new(
         first_interval => 2,
         interval       => 5,
         on_tick        => sub {
-            for my $client (
-                (values %ws_to_current_client),
-                (map { @{$_} } values %ws_to_old_clients)
-            ) {
+            my @current_clients = values %ws_to_current_client;
+            my @old_clients = map { @{$_} } values %ws_to_old_clients;
+
+            for my $client (@current_clients, @old_clients) {
                 my $now = time();
-                print STDERR "Sending ping frame to client at $now.\n";
+                debug("Sending ping frame to client at $now");
                 $client->send_ping_frame();
-                $client_to_ping{$client} = $now;
+                $client_to_details{$client}->{'ping'} = $now;
             }
         }
     );
@@ -240,50 +241,50 @@ sub receive
             my @current_clients = values %ws_to_current_client;
             my @pong_timestamps =
                 sort
-                map { $client_to_pong{$_} }
+                map { $client_to_details{$_}->{'pong'} }
                     @current_clients;
-            if ($pong_timestamps[0] < (time() - $ping_timeout)) {
+            if ($pong_timestamps[0] < (time() - $PING_TIMEOUT)) {
                 my $now = time();
                 print STDERR "No ping response within ".
-                                "${ping_timeout}s, exiting at $now.\n";
+                             "${PING_TIMEOUT}s, exiting at $now.\n";
                 my $diff = $now - $start;
-                print STDERR "Persist stayed open for ${diff}s.\n";
+                print STDERR "Persistent connection stayed open for ${diff}s.\n";
                 exit(1);
             } else {
-                print STDERR "All clients still alive.\n";
+                debug("All clients still alive");
             }
 
             # Confirm that each old client survived past the new
             # client start time, for new clients that are at least 60s
             # old.
             for my $ws_name (keys %ws_to_old_clients) {
+                my $current_client = $ws_to_current_client{$ws_name};
                 my $current_start =
-                    $client_to_start{$ws_to_current_client{$ws_name}};
+                    $client_to_details{$current_client}->{'start'};
                 my $now = time();
                 if (($now - $current_start) > 60) {
-                    print
-                        "Checking old client (current start is $current_start)\n";
+                    debug("Checking old client ".
+                          "(current start is $current_start)");
                     my @old_clients = @{$ws_to_old_clients{$ws_name}};
                     for my $client (@old_clients) {
                         my %client_to_id = reverse %id_to_client;
-                        print "Old client is $client (".
-                            $client_to_id{$client}.")\n";
-                        my $latest_pong = $client_to_pong{$client};
-                        print "Old pong is $latest_pong\n";
+                        debug("Old client is $client (".
+                              $client_to_id{$client}.")");
+                        my $latest_pong = $client_to_details{$client}->{'pong'};
+                        debug("Old ping response is $latest_pong");
 
                         if ($latest_pong < $current_start) {
-                            print STDERR "Last pong for old client ".
-                                "happened before new client ".
-                                "started, so gap: fail, existing $now.\n";
+                            print STDERR "No ping response for old ".
+                                         "client after new client ".
+                                         "initialised, exiting at $now\n";
                             my $diff = $now - $start;
-                            print STDERR "Persist stayed open for ${diff}s.\n";
+                            print STDERR "Persistent connection stayed ".
+                                         "open for ${diff}s.\n";
                             exit(1);
                         }
-                        print STDERR "Removing old client for $ws_name at $now\n";
+                        debug("Removing old client for $ws_name at $now");
                         $loop->remove($client);
-                        delete $client_to_start{$client};
-                        delete $client_to_ping{$client};
-                        delete $client_to_pong{$client};
+                        delete $client_to_details{$client};
                     }
                     $ws_to_old_clients{$ws_name} = [];
                 }
@@ -306,6 +307,8 @@ sub receive
                     for my $conversation_id (@conversation_ids) {
                         my $conversation_name =
                             $ws->conversations_obj()->id_to_name($conversation_id);
+                        debug("Fetching new messages for ".
+                              "$ws_name/$conversation_name");
                         my @threads = keys
                             %{$conversation_to_threads->{$conversation_id} || {}};
                         $conversation_name_to_threads{$conversation_name} =
@@ -321,6 +324,7 @@ sub receive
             }
         }
     );
+
     $client_timer->start();
     $loop->add($client_timer);
     $ping_timer->start();
