@@ -8,6 +8,7 @@ use JSON::XS qw(decode_json encode_json);
 use List::MoreUtils qw(uniq);
 use Time::HiRes qw(sleep);
 
+use App::Paws::Debug qw(debug);
 use App::Paws::ConversationStorage;
 use App::Paws::Lock;
 use App::Paws::Message;
@@ -46,8 +47,10 @@ sub _run_internal
 
     my $used_cached = 0;
     if ($has_cached) {
+        debug("Cached conversation list exists");
         $used_cached = 1;
     } else {
+        debug("Cached conversation list does not exist: fetching");
         $ws->conversations_obj()->retrieve();
         for my $conversation (@{$ws->conversations_obj()->get_list()}) {
             if (($conversation->{'type'} eq 'im')
@@ -95,6 +98,11 @@ sub _run_internal
     while (not $runner->poke()) {
         sleep(0.01);
     }
+    if ($used_cached) {
+        debug("Finished receiving messages for cached conversations");
+    } else {
+        debug("Finished receiving messages for all conversations");
+    }
 
     my @new_css;
     if ($has_cached) {
@@ -119,11 +127,16 @@ sub _run_internal
                     );
             }
         }
-        for my $cs (@new_css) {
-            $cs->receive_messages($since_ts);
-        }
-        while (not $runner->poke()) {
-            sleep(0.01);
+        if (not @new_css) {
+            debug("No new conversations found: finished receiving messages");
+        } else {
+            for my $cs (@new_css) {
+                $cs->receive_messages($since_ts);
+            }
+            while (not $runner->poke()) {
+                sleep(0.01);
+            }
+            debug("Finished receiving messages for all conversations");
         }
     }
 
@@ -133,6 +146,7 @@ sub _run_internal
     while (not $runner->poke()) {
         sleep(0.01);
     }
+    debug("Finished receiving threads for all conversations");
 
     for my $cs (@sorted_css, @new_css) {
         my $name = $cs->{'name'};
@@ -142,6 +156,7 @@ sub _run_internal
     $db->{'conversation-map'} = $conversation_map;
 
     write_file($path, encode_json($db));
+    debug("Wrote database to disk successfully");
 }
 
 sub run

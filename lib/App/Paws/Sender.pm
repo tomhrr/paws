@@ -12,6 +12,7 @@ use List::MoreUtils qw(uniq);
 use MIME::Parser;
 use URI;
 
+use App::Paws::Debug qw(debug);
 use App::Paws::Lock;
 use App::Paws::Utils qw(get_mail_date);
 
@@ -38,7 +39,9 @@ sub _write_bounce
     my $date = get_mail_date(time());
     my $domain = $context->domain_name();
     my $to = $context->user_email();
-    write_file($bounce_dir.'/tmp/'.$fn, <<EOF);
+    my $tmp_path = "$bounce_dir/tmp/$fn";
+    my $new_path = "$bounce_dir/new/$fn";
+    write_file($tmp_path, <<EOF);
 Date: $date
 From: admin\@$domain
 To: $to
@@ -47,7 +50,8 @@ Content-Type: text/plain
 
 Unable to deliver message (message ID '$message_id'): $error_message
 EOF
-    rename($bounce_dir.'/tmp/'.$fn, $bounce_dir.'/new/'.$fn);
+    rename($tmp_path, $new_path);
+    debug("Wrote bounce message ($message_id) to '$new_path'");
 
     return 1;
 }
@@ -136,6 +140,9 @@ sub _send_queued_single
 {
     my ($self, $entity) = @_;
 
+    debug("Sending queued message (subject: ".
+          $entity->head()->decode()->get('Subject').")");
+
     my $context = $self->{'context'};
     my $ua      = $context->ua();
     my $runner  = $context->runner();
@@ -156,11 +163,13 @@ sub _send_queued_single
                 $tos[0], $message_id
             );
         if (not $ws) {
+            debug("No workspace found for message, returning");
             return 1;
         }
     }
 
     if (not $conversation_id) {
+        debug("Conversation not found, creating new one");
         my @recipients = (@tos, @ccs);
         my @usernames;
         my @ws_names;
@@ -203,12 +212,10 @@ sub _send_queued_single
         @user_ids = uniq @user_ids;
         $conversation_id = $self->_create_conversation($ws, $message_id,
                                                        \@user_ids);
-        if (not $conversation_id) {
-            return 1;
-        }
     }
 
     if (not $conversation_id) {
+        debug("Unable to find/create conversation, returning");
         $self->_write_bounce($message_id,
                              "Unable to find conversation ID");
         return 1;
@@ -262,6 +269,7 @@ sub _send_queued_single
     $req->uri($context->slack_base_url().'/chat.postMessage');
     $req->method('POST');
     $req->content(encode_json(\%post_data));
+    debug("Sending message to Slack");
 
     my $res = $ua->request($req);
     if (not $res->is_success()) {
@@ -300,6 +308,7 @@ sub _send_queued_single
             return 1;
         }
     }
+    debug("Message sent successfully");
 
     return 1;
 }

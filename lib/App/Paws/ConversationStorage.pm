@@ -6,6 +6,8 @@ use strict;
 use JSON::XS qw(decode_json);
 use List::Util qw(min minstr first);
 
+use App::Paws::Debug qw(debug);
+
 use constant UNNEEDED_BUFFER => 3600;
 
 sub new
@@ -73,6 +75,7 @@ sub _check_for_new_threads
     for my $message (@{$messages}) {
         my $thread_ts = $message->thread_ts();
         if ($thread_ts) {
+            debug("Adding thread ($thread_ts)");
             $threads->{$thread_ts} ||= {
                 last_ts    => 1,
                 deliveries => {},
@@ -94,6 +97,7 @@ sub _write_new_edits
         my $ts = $message->ts();
         my $edited_ts = $message->edited_ts();
         if ($edited_ts and not $edits->{$edited_ts}) {
+            debug("Adding edit ($edited_ts)");
             my $parent_id = $message->id(1);
             my $entity = $message->to_entity($first_ts, $thread_ts,
                                              $parent_id);
@@ -121,6 +125,7 @@ sub _delete_absent_messages
         if ($deletions->{$ts}) {
             next;
         }
+        debug("Adding deletion message ($ts)");
         $seen_messages->{$ts} = 1;
         $deletions->{$ts} = 1;
         my $message = App::Paws::Message->new(
@@ -149,12 +154,15 @@ sub receive_messages
     my $threads    = $self->{'threads'};
     my $edits      = $self->{'edits'};
     my $runner     = $context->runner();
+    my $ws_name    = $ws->{'name'};
     my $begin_ts   =
         ($last_ts != 1)
             ? $last_ts - $ws->modification_window()
             : $last_ts;
 
     if ($since_ts and ($last_ts < $since_ts)) {
+        debug("$ws_name/$name: since_ts ($since_ts) overwriting ".
+              "last_ts ($last_ts)");
         $last_ts = $since_ts;
         $self->{'last_ts'} = $last_ts;
     }
@@ -164,6 +172,7 @@ sub receive_messages
     $runner->add('conversations.history', $history_req, sub {
         my ($runner, $res, $fn) = @_;
         eval {
+            debug("$ws_name/$name: receiving messages");
             my $data = _process_response($res);
             if (not $data) {
                 return;
@@ -185,6 +194,7 @@ sub receive_messages
                     @messages;
             for my $message (@new_messages) {
                 my $ts = $message->ts();
+                debug("Adding new message ($ts)");
                 my $entity = $message->to_entity($first_ts, $first_ts);
                 $write_cb->($entity);
                 $deliveries->{$ts} = 1;
@@ -203,6 +213,7 @@ sub receive_messages
 
             if (my $cursor =
                     $data->{'response_metadata'}->{'next_cursor'}) {
+                debug("Response includes next_cursor, fetching");
                 $history_req =
                     $ws->get_history_request($id, $begin_ts,
                                              undef, $cursor);
@@ -243,8 +254,11 @@ sub receive_threads
     my $last_ts    = $self->{'last_ts'};
     my $threads    = $self->{'threads'};
     my $runner     = $context->runner();
+    my $ws_name    = $ws->{'name'};
 
     if ($since_ts and ($last_ts < $since_ts)) {
+        debug("$ws_name/$name: since_ts ($since_ts) overwriting ".
+              "last_ts ($last_ts)");
         $last_ts = $since_ts;
         $self->{'last_ts'} = $last_ts;
     }
@@ -265,11 +279,14 @@ sub receive_threads
 		: $last_ts;
 
         if ($since_ts and ($last_ts < $since_ts)) {
+            debug("$ws_name/$name: since_ts ($since_ts) overwriting ".
+                  "last_ts ($last_ts)");
             $last_ts = $since_ts;
             $thread_data->{'last_ts'} = $last_ts;
         }
         if (($last_ts != 1)
                 and ($last_ts < (time() - $ws->thread_expiry()))) {
+            debug("$ws_name/$name: thread ($thread_ts) is expired, skipping");
             next;
         }
 
@@ -279,6 +296,7 @@ sub receive_threads
         $runner->add('conversations.replies', $replies_req, sub {
             my ($runner, $res, $fn) = @_;
             eval {
+                debug("$ws_name/$name: receiving threads");
                 my $data = _process_response($res);
                 if (not $data) {
                     return;
@@ -299,6 +317,7 @@ sub receive_threads
                     if ($ts eq $thread_ts) {
                         next;
                     }
+                    debug("Adding new message ($ts)");
                     my $entity = $message->to_entity($first_ts, $thread_ts);
                     $write_cb->($entity);
                     $deliveries->{$ts} = 1;
@@ -317,6 +336,7 @@ sub receive_threads
 
                 if (my $cursor =
                         $data->{'response_metadata'}->{'next_cursor'}) {
+                    debug("Response includes next_cursor, fetching");
                     $replies_req =
                         $ws->get_replies_request($id, $thread_ts, $begin_ts,
                                                  undef, $cursor);
@@ -338,6 +358,7 @@ sub receive_threads
                     if (($last_ts != 1)
                             and ($last_ts < (time() - $ws->thread_expiry()
                                                     - UNNEEDED_BUFFER()))) {
+                        debug("Thread ($thread_ts) is unneeded, deleting");
                         delete $threads->{$thread_ts};
                     }
                 }
