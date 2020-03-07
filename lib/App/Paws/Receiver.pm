@@ -200,6 +200,20 @@ sub run_for_subset
         my $db = decode_json(read_file($path));
         my $conversation_map = $db->{'conversation-map'};
 
+        for my $conversation_name (keys %{$conversations_and_threads}) {
+            if (not $conversation_map->{$conversation_name}) {
+                $ws->conversations_obj()->retrieve();
+                for my $conversation (@{$ws->conversations_obj()->get_list()}) {
+                    if (($conversation->{'type'} eq 'im')
+                            or ($conversation->{'is_member'})) {
+                        my $name = $conversation->{'name'};
+                        $conversation_map->{$name} = $conversation->{'id'};
+                    }
+                }
+                last;
+            }
+        }
+
         my @css;
         for my $conversation_name (keys %{$conversations_and_threads}) {
             my $cs =
