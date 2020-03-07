@@ -4,11 +4,14 @@ use warnings;
 use strict;
 
 use File::Temp;
+use IO::Capture::Stderr;
 use constant::override substitute => { ATTEMPTS => 1 };
 
 use App::Paws::Lock;
 
 use Test::More tests => 7;
+
+my $cap = IO::Capture::Stderr->new();
 
 my $file_temp = File::Temp->new();
 my $temp_path = $file_temp->filename();
@@ -18,7 +21,9 @@ unlink $temp_path;
     my $lock = App::Paws::Lock->new(path => $temp_path);
     ok($lock, 'Secured lock over path');
 
+    $cap->start();
     my $lock2 = eval { App::Paws::Lock->new(path => $temp_path); };
+    $cap->stop();
     ok($@, 'Unable to get additional lock over path');
 
     my $res = $lock->unlock();
@@ -33,7 +38,9 @@ unlink $temp_path;
         my $lock = App::Paws::Lock->new(path => $temp_path);
         ok($lock, 'Secured lock over path');
 
+        $cap->start();
         my $lock2 = eval { App::Paws::Lock->new(path => $temp_path); };
+        $cap->stop();
         ok($@, 'Unable to get additional lock over path');
     }
 

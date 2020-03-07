@@ -29,7 +29,6 @@ $paws->receive(1);
 my @files = get_files_in_directory($mail_dir);
 is(@files, 11, 'Got 11 mails');
 
-
 my $mail = write_message('slackbot', 'im/slackbot@test.slack.alt, '.
                          'im/slackbot@example.slack.alt',
                          'Testing');
