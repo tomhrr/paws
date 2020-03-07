@@ -101,14 +101,13 @@ sub receive
                                 workspace => $ws,
                                 %args) }
             @receiver_specs_to_process;
-    for my $receiver (@receivers) {
-        $receiver->workspace()->conversations_obj()->retrieve_nb();
-    }
-    for my $receiver (@receivers) {
-        $receiver->run($counter, $since_ts);
-    }
-
     if (not $persist) {
+        for my $receiver (@receivers) {
+            $receiver->workspace()->conversations_obj()->retrieve_nb();
+        }
+        for my $receiver (@receivers) {
+            $receiver->run($counter, $since_ts);
+        }
         return 1;
     }
 
@@ -126,6 +125,7 @@ sub receive
     my %client_to_details;
     my %id_to_client;
     my $id = 1;
+    my $first_pass = 1;
 
     my $loop = IO::Async::Loop->new();
 
@@ -200,6 +200,15 @@ sub receive
                 }
                 $ws_to_current_client{$ws_name} = $client;
                 debug("Started new client for $ws_name ($new_id)");
+            }
+            if ($first_pass) {
+                for my $receiver (@receivers) {
+                    $receiver->workspace()->conversations_obj()->retrieve_nb();
+                }
+                for my $receiver (@receivers) {
+                    $receiver->run($counter, $since_ts);
+                }
+                $first_pass = 0;
             }
         }
     );

@@ -214,8 +214,24 @@ sub run_for_subset
             }
         }
 
+        my @conversation_names = keys %{$conversation_map};
+
+        my @actual_conversations =
+            uniq
+            map { ($_ eq '*')           ? @conversation_names
+                : ($_ =~ /^(.*?)\/\*$/) ? (grep { /^$1\// }
+                                                @conversation_names)
+                                        : $_ }
+                @{$ws->conversations() || []};
+        my %actual_conversation_lookup =
+            map { $_ => 1 }
+                @actual_conversations;
+
         my @css;
         for my $conversation_name (keys %{$conversations_and_threads}) {
+            if (not $actual_conversation_lookup{$conversation_name}) {
+                next;
+            }
             my $cs =
                 App::Paws::ConversationStorage->new(
                     context   => $context,
