@@ -40,7 +40,16 @@ sub get_default_config
 		    'im/slackbot',
 		    'im/user3',
 		],
-	    }
+	    },
+	    test2 => {
+		token => 'xoxp-asdf',
+		conversations => [
+		    'channel/general',
+		    'channel/work',
+		    'im/slackbot',
+		    'im/user3',
+		],
+	    },
 	},
 	sender => {
 	    bounce_dir => $bounce_dir,
