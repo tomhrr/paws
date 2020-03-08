@@ -147,7 +147,6 @@ sub receive
                 for my $receiver (@receivers) {
                     $receiver->run($counter, $since_ts);
                 }
-                sleep(120);
                 $init_out_ch->send({});
                 debug("Finished running initial fetch operations");
             };
