@@ -256,7 +256,7 @@ sub receive
                 my $now = time();
                 print STDERR "No ping response within ".
                              "${PING_TIMEOUT}s, exiting at $now.\n";
-                my $diff = $now - $start;
+                my $diff = $now - $start->epoch();
                 print STDERR "Persistent connection stayed open for ${diff}s.\n";
                 exit(1);
             } else {
@@ -286,7 +286,7 @@ sub receive
                             print STDERR "No ping response for old ".
                                          "client after new client ".
                                          "initialised, exiting at $now\n";
-                            my $diff = $now - $start;
+                            my $diff = $now - $start->epoch();
                             print STDERR "Persistent connection stayed ".
                                          "open for ${diff}s.\n";
                             exit(1);
