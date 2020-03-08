@@ -113,6 +113,19 @@ configured for many channels that are only updated infrequently, using
 For each command, if the `PAWS\_DEBUG` environment variable is set to
 a true value, then debug messages will be printed to standard error.
 
+### Generating tokens
+
+To generate a token for a workspace:
+
+ - run `paws-register`, and load the URL that is printed into a
+   browser;
+ - Slack's authorisation page will appear: grant access to the
+   required workspace;
+ - a success page will appear, containing a command like
+   `paws-register {code}`;
+ - run this command, and use the token (printed to standard output) in
+   the paws configuration for the workspace.
+
 ### Receivers
 
 #### maildir

@@ -14,7 +14,8 @@ my $output = WriteMakefile(
     EXE_FILES     => ['bin/paws-send',
                       'bin/paws-send-queued',
                       'bin/paws-receive',
-                      'bin/paws-aliases'],
+                      'bin/paws-aliases',
+                      'bin/paws-register'],
     MIN_PERL_VERSION => 5.006,
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => 0,

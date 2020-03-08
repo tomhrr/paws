@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use Data::Dumper;
+use JSON::XS qw(decode_json);
+use LWP::UserAgent;
+use URI;
+
+my $CLIENT_ID     = '989656798071.987793591184';
+# Not really a secret: needed here so that the client can get the
+# access token and add it to the local configuration.
+my $CLIENT_SECRET = '6875f57ee3b214f0f52b101e6b644ef5';
+my $REDIRECT_URI  = 'https://tomhrr.github.io/paws/oauth.html';
+
+if (not @ARGV) {
+    my $uri = URI->new('https://slack.com/oauth/authorize');
+    $uri->query_form(client_id    => $CLIENT_ID,
+                     redirect_uri => $REDIRECT_URI,
+                     scope        => 'read,client,post');
+    print "Open this link in a browser: ".$uri->as_string()."\n";
+    print "Get the code from the response, and then run this script ".
+          "again with that code as the argument.  The success page ".
+          "will also show these details.\n";
+} else {
+    my $uri = URI->new('https://slack.com/api/oauth.access');
+    $uri->query_form(client_id     => $CLIENT_ID,
+                     client_secret => $CLIENT_SECRET,
+                     redirect_uri  => $REDIRECT_URI,
+                     code          => $ARGV[0]);
+    my $ua = LWP::UserAgent->new();
+    my $res = $ua->get($uri);
+    if (not $res->is_success()) {
+        my $res_str = $res->as_string();
+        $res_str =~ s/(\r?\n)+$//g;
+        if ($ENV{'PAWS_DEBUG'}) {
+            print Dumper($res);
+        }
+        print STDERR "Unable to fetch access token: $res_str\n";
+    } else {
+        my $data = decode_json($res->decoded_content());
+        if (not $data->{'ok'}) {
+            print STDERR "Unable to fetch access token: error ".
+                         "code is '".$data->{'error'}."'\n";
+        } else {
+            print "The access token is: ".$data->{'access_token'}."\n";
+            print "Use this as the 'token' value in the workspace ".
+                  "configuration.\n";
+        }
+    }
+}
+
+1;
