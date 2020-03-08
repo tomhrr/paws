@@ -6,8 +6,10 @@ use strict;
 use Cwd;
 use DateTime;
 use File::Slurp qw(read_file write_file);
+use IO::Async::Channel;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
+use IO::Async::Routine;
 use JSON::XS qw(decode_json);
 use List::Util qw(first max);
 use Net::Async::WebSocket::Client;
@@ -129,6 +131,41 @@ sub receive
 
     my $loop = IO::Async::Loop->new();
 
+    my $init_in_ch  = IO::Async::Channel->new();
+    my $init_out_ch = IO::Async::Channel->new();
+    my $init_done   = 0;
+    my $init_routine = IO::Async::Routine->new(
+        channels_in  => [ $init_in_ch ],
+        channels_out => [ $init_out_ch ],
+        code => sub {
+            my $data = $init_in_ch->recv();
+            eval {
+                debug("Running initial fetch operations");
+                for my $receiver (@receivers) {
+                    $receiver->workspace()->conversations_obj()->retrieve_nb();
+                }
+                for my $receiver (@receivers) {
+                    $receiver->run($counter, $since_ts);
+                }
+                sleep(120);
+                $init_out_ch->send({});
+                debug("Finished running initial fetch operations");
+            };
+            if (my $error = $@) {
+                print STDERR "Initialisation failed\n";
+                exit(1);
+            }
+            return 0;
+        },
+    );
+    $loop->add($init_routine);
+    $init_out_ch->recv(
+        on_recv => sub {
+            debug("Initialisation completed, setting init_done");
+            $init_done = 1;
+        }
+    );
+
     my $client_timer = IO::Async::Timer::Periodic->new(
         first_interval => 0,
         interval       => 120,
@@ -202,12 +239,7 @@ sub receive
                 debug("Started new client for $ws_name ($new_id)");
             }
             if ($first_pass) {
-                for my $receiver (@receivers) {
-                    $receiver->workspace()->conversations_obj()->retrieve_nb();
-                }
-                for my $receiver (@receivers) {
-                    $receiver->run($counter, $since_ts);
-                }
+                $init_in_ch->send({});
                 $first_pass = 0;
             }
         }
@@ -306,6 +338,10 @@ sub receive
         interval       => ($persist_time * 60),
         on_tick        => sub {
             eval {
+                if (not $init_done) {
+                    debug("Initialisation not yet complete, skipping fetches");
+                    return;
+                }
                 for my $ws_name (keys %ws_to_conversation) {
                     my $conversation_to_threads =
                         $ws_to_conversation_to_thread{$ws_name};
