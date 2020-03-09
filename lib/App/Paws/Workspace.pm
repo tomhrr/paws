@@ -123,6 +123,14 @@ sub get_history_request
     );
 }
 
+sub reset
+{
+    my ($self) = @_;
+
+    $self->conversations_obj()->reset();
+    $self->users()->reset();
+}
+
 1;
 
 __END__
@@ -224,6 +232,11 @@ Takes a conversation ID, a lower-bound message timestamp, an optional
 upper-bound message timestamp, and an optional request cursor as its
 arguments.  Returns an L<HTTP::Request> object for getting the
 messages for the specified conversation.
+
+=item B<reset>
+
+Resets the internal object state.  This allows for re-fetching
+conversations and users from Slack.
 
 =back
 
