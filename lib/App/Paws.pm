@@ -356,6 +356,14 @@ sub receive
                               "$ws_name/$conversation_name");
                         my @threads = keys
                             %{$conversation_to_threads->{$conversation_id} || {}};
+                        my $thread_str = join ', ', @threads;
+                        if ($thread_str) {
+                            debug("Fetching threads for ".
+                                  "$ws_name/$conversation_name: $thread_str");
+                        } else {
+                            debug("No threads to fetch for ".
+                                  "$ws_name/$conversation_name");
+                        }
                         $conversation_name_to_threads{$conversation_name} =
                             \@threads;
                     }

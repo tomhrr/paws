@@ -245,7 +245,7 @@ sub run_for_subset
             my @threads =
                 @{$conversations_and_threads->{$conversation_name}};
             for my $thread_ts (@threads) {
-                $cs->receive_threads($thread_ts);
+                $cs->receive_threads(undef, $thread_ts);
             }
             push @css, $cs;
         }

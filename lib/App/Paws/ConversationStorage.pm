@@ -74,9 +74,9 @@ sub _check_for_new_threads
 
     for my $message (@{$messages}) {
         my $thread_ts = $message->thread_ts();
-        if ($thread_ts) {
+        if ($thread_ts and not $threads->{$thread_ts}) {
             debug("Adding thread ($thread_ts)");
-            $threads->{$thread_ts} ||= {
+            $threads->{$thread_ts} = {
                 last_ts    => 1,
                 deliveries => {},
                 edits      => {},
@@ -258,7 +258,7 @@ sub receive_threads
 
     if ($since_ts and ($last_ts < $since_ts)) {
         debug("$ws_name/$name: since_ts ($since_ts) overwriting ".
-              "last_ts ($last_ts)");
+              "last_ts ($last_ts) in receive_threads");
         $last_ts = $since_ts;
         $self->{'last_ts'} = $last_ts;
     }
@@ -269,7 +269,7 @@ sub receive_threads
             next;
         }
         my $thread_data = $threads->{$thread_ts};
-        my $last_ts     = $thread_data->{'last_ts'};
+        my $last_ts     = $thread_data->{'last_ts'} || 1;
         my $deliveries  = $thread_data->{'deliveries'};
         my $deletions   = $thread_data->{'deletions'};
         my $edits       = $thread_data->{'edits'};
@@ -280,7 +280,7 @@ sub receive_threads
 
         if ($since_ts and ($last_ts < $since_ts)) {
             debug("$ws_name/$name: since_ts ($since_ts) overwriting ".
-                  "last_ts ($last_ts)");
+                  "last_ts ($last_ts) for thread ($thread_ts)");
             $last_ts = $since_ts;
             $thread_data->{'last_ts'} = $last_ts;
         }
