@@ -346,6 +346,7 @@ sub receive
                         $ws_to_conversation_to_thread{$ws_name};
                     my $receiver = $ws_to_receiver{$ws_name};
                     my $ws = $receiver->{'workspace'};
+                    $ws->reset();
                     my @conversation_ids = keys %{$ws_to_conversation{$ws_name}};
                     my %conversation_name_to_threads;
                     for my $conversation_id (@conversation_ids) {
@@ -409,8 +410,7 @@ sub reset
     my $context = $self->{'context'};
     for my $ws (values %{$context->{'workspaces'}}) {
         for my $module (qw(conversations_obj users)) {
-            $ws->{$module}->{'retrieving'} = 0;
-            $ws->{$module}->{'retrieved'}  = 0;
+            $ws->{$module}->reset();
         };
     }
 

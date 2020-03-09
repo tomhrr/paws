@@ -226,6 +226,21 @@ sub id_to_name
     return;
 }
 
+sub reset
+{
+    my ($self) = @_;
+
+    if ($self->{'retrieving'}) {
+        print STDERR "Unable to reset: retrieval in progress\n";
+        return;
+    }
+
+    $self->{'retrieving'} = 0;
+    $self->{'retrieved'}  = 0;
+
+    return 1;
+}
+
 1;
 
 __END__
@@ -340,6 +355,11 @@ Takes a conversation ID (per the Slack API) and returns a conversation
 name.  If the conversation ID cannot be found, and this object has not
 already been used to retrieve the list of conversations for this
 workspace from Slack, then retrieve that list (blocking) and re-check.
+
+=item B<reset>
+
+Resets the internal object state.  This allows for re-fetching
+conversations from Slack.
 
 =back
 

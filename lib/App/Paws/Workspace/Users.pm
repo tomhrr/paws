@@ -196,6 +196,21 @@ sub name_to_id
     return $user_map->{$name};
 }
 
+sub reset
+{
+    my ($self) = @_;
+
+    if ($self->{'retrieving'}) {
+        print STDERR "Unable to reset: retrieval in progress\n";
+        return;
+    }
+
+    $self->{'retrieving'} = 0;
+    $self->{'retrieved'}  = 0;
+
+    return 1;
+}
+
 1;
 
 __END__
@@ -272,6 +287,11 @@ Takes a username (per the return value of C<get_list>) and returns a
 user ID.  If the user name cannot be found, and this object has not
 already been used to retrieve the list of users for this workspace
 from Slack, then retrieve that list (blocking) and re-check.
+
+=item B<reset>
+
+Resets the internal object state.  This allows for re-fetching
+conversations from Slack.
 
 =back
 
