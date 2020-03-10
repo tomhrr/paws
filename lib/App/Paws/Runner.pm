@@ -75,7 +75,7 @@ sub poke
         my $time = time();
         if (@{$pending} and ($time > ($last_added + $interval))) {
             my $next_pending = shift @{$pending};
-	    my ($req, $fn) = @{$next_pending};
+            my ($req, $fn) = @{$next_pending};
             my $task_id = $async->add($req);
             $incomplete->{$task_id} = $next_pending;
             $tag_data->{'last_added'} = $time;

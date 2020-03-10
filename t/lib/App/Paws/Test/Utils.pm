@@ -29,41 +29,41 @@ sub get_default_config
     my ($mail_dir, $bounce_dir) = @_;
 
     return {
-	domain_name => 'slack.alt',
-	user_email => 'test@example.com',
-	workspaces => {
-	    test => {
-		token => 'xoxp-asdf',
-		conversations => [
-		    'channel/general',
-		    'channel/work',
-		    'im/slackbot',
-		    'im/user3',
-		],
-	    },
-	    test2 => {
-		token => 'xoxp-asdf',
-		conversations => [
-		    'channel/general',
-		    'channel/work',
-		    'im/slackbot',
-		    'im/user3',
-		],
-	    },
-	},
-	sender => {
-	    bounce_dir => $bounce_dir,
-	    fallback_sendmail => '/bin/true',
-	},
-	receivers => [ {
-	    type      => 'maildir',
-	    name      => 'initial',
-	    workspace => 'test',
-	    path      => $mail_dir,
-	} ],
-	rate_limiting => {
-	    initial => 1000,
-	},
+        domain_name => 'slack.alt',
+        user_email => 'test@example.com',
+        workspaces => {
+            test => {
+                token => 'xoxp-asdf',
+                conversations => [
+                    'channel/general',
+                    'channel/work',
+                    'im/slackbot',
+                    'im/user3',
+                ],
+            },
+            test2 => {
+                token => 'xoxp-asdf',
+                conversations => [
+                    'channel/general',
+                    'channel/work',
+                    'im/slackbot',
+                    'im/user3',
+                ],
+            },
+        },
+        sender => {
+            bounce_dir => $bounce_dir,
+            fallback_sendmail => '/bin/true',
+        },
+        receivers => [ {
+            type      => 'maildir',
+            name      => 'initial',
+            workspace => 'test',
+            path      => $mail_dir,
+        } ],
+        rate_limiting => {
+            initial => 1000,
+        },
     };
 }
 

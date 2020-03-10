@@ -27,12 +27,12 @@ sub new
         slack_base_url  => $SLACK_BASE_URL,
         ua              => LWP::UserAgent->new(),
         runner          => App::Paws::Runner->new(
-	    rates => {
-		'users.list'            => 20 * $multiplier,
-		'conversations.list'    => 20 * $multiplier,
-		'conversations.replies' => 50 * $multiplier,
-		'conversations.history' => 50 * $multiplier,
-	    },
+            rates => {
+                'users.list'            => 20 * $multiplier,
+                'conversations.list'    => 20 * $multiplier,
+                'conversations.replies' => 50 * $multiplier,
+                'conversations.history' => 50 * $multiplier,
+            },
             backoff => ($rate_limiting->{'backoff'} || 5)
         ),
     };
