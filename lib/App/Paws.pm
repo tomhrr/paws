@@ -59,6 +59,9 @@ sub new
         sender  => $sender,
     };
 
+    # So that DESTROY methods will be run.
+    $SIG{'TERM'} = sub { exit(0); };
+
     bless $self, $class;
     return $self;
 }
