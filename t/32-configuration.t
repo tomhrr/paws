@@ -3,6 +3,7 @@
 use warnings;
 use strict;
 
+use File::Spec::Functions qw(catfile);
 use File::Temp qw(tempdir);
 
 use App::Paws;
@@ -59,11 +60,11 @@ test_vc('Minimal configuration (no warnings)',
 
 my $maildir = tempdir();
 for my $subdir (qw(cur new tmp)) {
-    mkdir "$maildir/$subdir" or die $!;
+    mkdir catfile($maildir, $subdir) or die $!;
 }
 my $bouncedir = tempdir();
 for my $subdir (qw(cur new tmp)) {
-    mkdir "$bouncedir/$subdir" or die $!;
+    mkdir catfile($bouncedir, $subdir) or die $!;
 }
 
 test_vc('Usable configuration',

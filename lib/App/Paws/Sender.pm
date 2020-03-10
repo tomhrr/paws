@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use File::Slurp qw(read_file write_file);
+use File::Spec::Functions qw(catfile no_upwards);
 use File::Temp qw(tempdir);
 use HTTP::Request;
 use HTTP::Request::Common qw(POST);
@@ -39,8 +40,8 @@ sub _write_bounce
     my $date = get_mail_date(time());
     my $domain = $context->domain_name();
     my $to = $context->user_email();
-    my $tmp_path = "$bounce_dir/tmp/$fn";
-    my $new_path = "$bounce_dir/new/$fn";
+    my $tmp_path = catfile($bounce_dir, 'tmp', $fn);
+    my $new_path = catfile($bounce_dir, 'new', $fn);
     write_file($tmp_path, <<EOF);
 Date: $date
 From: admin\@$domain
@@ -340,7 +341,7 @@ sub submit
     }
 
     my $queue_dir = $context->queue_directory();
-    write_file($queue_dir.'/'.$$.'-'.time().'-'.(int(rand(10000))), @lines);
+    write_file(catfile($queue_dir, $$.'-'.time().'-'.(int(rand(10000)))), @lines);
 
     return 1;
 }
@@ -354,10 +355,10 @@ sub send_queued
     my $to      = $context->user_email();
 
     my $queue_dir  = $context->queue_directory();
-    my $queue_lock = $queue_dir.'/lock';
+    my $queue_lock = catfile($queue_dir, 'lock');
     my $lock       = App::Paws::Lock->new(path => $queue_lock);
 
-    my $path = $context->db_directory().'/sender';
+    my $path = catfile($context->db_directory(), 'sender');
     if (not -e $path) {
         write_file($path, encode_json({ failures => {} }));
     }
@@ -365,21 +366,34 @@ sub send_queued
 
     eval {
         my $dh;
-        opendir $dh, $queue_dir or die $!;
+        my $res = opendir $dh, $queue_dir;
+        if (not $res) {
+            print STDERR "Unable to open queue directory: $!";
+            exit(1);
+        }
         while (my $entry = readdir($dh)) {
-            if (($entry eq '.') or ($entry eq '..') or ($entry eq 'lock')) {
+            ($entry) = no_upwards($entry);
+            if (not $entry) {
                 next;
             }
-            my $entry_path = $queue_dir.'/'.$entry;
+            if ($entry eq 'lock') {
+                next;
+            }
+
+            my $entry_path = catfile($queue_dir, $entry);
             if (-f $entry_path) {
                 my $parser = MIME::Parser->new();
                 my $parser_dir = tempdir();
                 $parser->output_under($parser_dir);
-                open my $fh, '<', $entry_path or die $!;
+                my $res = open my $fh, '<', $entry_path;
+                if (not $res) {
+                    print STDERR "Unable to open queued message: $!";
+                    exit(1);
+                }
                 my $entity = $parser->parse($fh);
                 close $fh;
 
-                my $res = $self->_send_queued_single($entity);
+                $res = $self->_send_queued_single($entity);
                 if (not $res) {
                     my $message_id =
                         $entity->head()->decode->get('Message-ID');

@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use File::Slurp qw(write_file);
+use File::Spec::Functions qw(catfile);
 use Sys::Hostname;
 
 use App::Paws::Receiver;
@@ -48,8 +49,9 @@ sub run
 
             my $fn = $ts.'.'.$$.'_'.$counter++.'.'.hostname();
 
-            write_file($maildir.'/tmp/'.$fn, $entity->as_string());
-            rename($maildir.'/tmp/'.$fn, $maildir.'/new/'.$fn);
+            write_file(catfile($maildir, 'tmp', $fn), $entity->as_string());
+            rename(catfile($maildir, 'tmp', $fn),
+                   catfile($maildir, 'new', $fn));
         }
     );
 

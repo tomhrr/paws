@@ -50,15 +50,15 @@ $config_path->flush();
 
 $paws = App::Paws->new();
 $paws->receive(20);
-@files = `find $mail_dir -type f`;
+@files = get_files_in_directory($mail_dir);
 is(@files, 12, 'Deletion message added');
 
 $paws->receive(40);
-@files = `find $mail_dir -type f`;
+@files = get_files_in_directory($mail_dir);
 is(@files, 12, 'Deletion message not added again');
 
 $paws->receive(60);
-@files = `find $mail_dir -type f`;
+@files = get_files_in_directory($mail_dir);
 is(@files, 12, 'Deletion message not added again');
 
 $server->shutdown();

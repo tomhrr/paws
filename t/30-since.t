@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Fcntl qw(SEEK_SET);
+use File::Temp qw(tempdir);
 use JSON::XS qw(encode_json);
 use Time::Local;
 
@@ -40,7 +41,11 @@ $paws->send_queued();
 $paws->receive(20);
 @files = get_files_in_directory($mail_dir);
 is(@files, 1, 'Received mail previously sent (only)');
-my ($ts) = `grep X-Paws-Thread-TS $files[0]`;
+my $parser = MIME::Parser->new();
+my $parser_tempdir = tempdir();
+$parser->output_under($parser_tempdir);
+my $entity = $parser->parse_open($files[0]);
+my ($ts) = $entity->head()->get('X-Paws-Thread-TS');
 chomp $ts;
 $ts =~ s/.*: //;
 
@@ -56,7 +61,8 @@ ok($res->is_success(), 'Created new thread successfully');
 $paws->receive(30);
 @files = sort { $a cmp $b } get_files_in_directory($mail_dir);
 is(@files, 2, 'Got thread message');
-my ($thread_ts) = `grep X-Paws-Thread-TS $files[1]`;
+$entity = $parser->parse_open($files[1]);
+my ($thread_ts) = $entity->head()->get('X-Paws-Thread-TS');
 chomp $thread_ts;
 $thread_ts =~ s/.*: //;
 

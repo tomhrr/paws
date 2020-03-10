@@ -45,15 +45,18 @@ sub run
             eval { run3([$cmd, @args], \$data, \undef, \$stderr); };
             if (my $error = $@) {
                 $stderr ||= "(no stderr output)";
-                die "MDA execution failed: $stderr";
+                $stderr =~ s/(\r?\n)+$//g;
+                print STDERR "MDA execution failed: $stderr\n";
             }
             my $res = $?;
             if ($? != 0) {
                 $stderr ||= "(no stderr output)";
-                die "MDA execution failed: $stderr";
+                $stderr =~ s/(\r?\n)+$//g;
+                print STDERR "MDA execution failed: $stderr\n";
             }
             if ($stderr) {
-                die "MDA execution failed: $stderr";
+                $stderr =~ s/(\r?\n)+$//g;
+                print STDERR "MDA execution failed: $stderr\n";
             }
         }
     );

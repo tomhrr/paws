@@ -6,6 +6,7 @@ use strict;
 use Cwd;
 use DateTime;
 use File::Slurp qw(read_file write_file);
+use File::Spec::Functions qw(catfile);
 use IO::Async::Channel;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
@@ -22,10 +23,10 @@ use App::Paws::Receiver::MDA;
 use App::Paws::Sender;
 use App::Paws::Utils qw(standard_get_request);
 
-our $CONFIG_DIR  = $ENV{'HOME'}.'/.paws';
-our $CONFIG_PATH = $CONFIG_DIR.'/config';
-our $QUEUE_DIR   = $CONFIG_DIR.'/queue';
-our $DB_DIR      = $CONFIG_DIR.'/db';
+our $CONFIG_DIR  = catfile($ENV{'HOME'}, '.paws');
+our $CONFIG_PATH = catfile($CONFIG_DIR, 'config');
+our $QUEUE_DIR   = catfile($CONFIG_DIR, 'queue');
+our $DB_DIR      = catfile($CONFIG_DIR, 'db');
 
 our $PING_TIMEOUT = 30;
 
@@ -36,7 +37,7 @@ sub _is_maildir
     my ($dir) = @_;
 
     for my $subdir (qw(cur new tmp)) {
-        if (not -d "$dir/$subdir") {
+        if (not -d catfile($dir, $subdir)) {
             return;
         }
     }
@@ -179,7 +180,11 @@ sub new
 
     for my $dir ($QUEUE_DIR, $DB_DIR) {
         if (not -e $dir) {
-            mkdir $dir or die $!;
+            my $res = mkdir $dir;
+            if (not $res) {
+                print STDERR "Unable to make directory $dir: $!\n";
+                exit(1);
+            }
         }
     }
 
@@ -233,7 +238,8 @@ sub receive
             first { $_->{'name'} eq $name }
                 @{$receiver_specs};
         if (not $receiver_spec) {
-            die "Unable to find named receiver";
+            print STDERR "Unable to find named receiver (for $name).\n";
+            exit(1);
         }
         @receiver_specs_to_process = $receiver_spec;
     }

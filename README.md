@@ -30,6 +30,11 @@ A user token is needed for each workspace.  To generate these tokens:
  - run this command: the user token will be printed to standard
    output.
 
+Occasionally, switching workspaces on the Slack authorisation page
+will result in an error message: retrying the registration process at
+that point should make switching unnecessary, and the error can be
+avoided.
+
 After the tokens have been generated, make a `.paws` directory in your
 home directory.  Configuration is via a YAML file named `config`,
 placed within that directory.  A minimal example is like so:
@@ -142,6 +147,9 @@ Type-specific configuration:
 
 ### Notes
 
+ - Each executable takes an optional `--debug` argument.  If set,
+   the executable will print debug information to standard error as it
+   progresses.
  - Files from Slack conversations are downloaded and presented as
    attachments in emails.  Attachments are uploaded to Slack as files.
  - Messages from a given conversation are represented as being replies

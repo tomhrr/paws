@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use File::Slurp qw(read_file write_file);
+use File::Spec::Functions qw(catfile);
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use Time::HiRes qw(sleep);
@@ -59,7 +60,7 @@ sub _init_conversations
     my $runner = $context->runner();
     my $ws = $self->{'workspace'};
     my $db_dir = $context->db_directory();
-    my $path = $db_dir.'/'.$ws->name().'-workspace-conversations-db';
+    my $path = catfile($db_dir, $ws->name().'-workspace-conversations-db');
     if (not -e $path) {
         write_file($path, '{}');
     }

@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use File::Slurp qw(read_file write_file);
+use File::Spec::Functions qw(catfile);
 use JSON::XS qw(decode_json encode_json);
 use List::MoreUtils qw(uniq);
 use Time::HiRes qw(sleep);
@@ -32,7 +33,7 @@ sub _run_internal
     my $name    = $self->{'name'};
     my $runner  = $self->{'context'}->runner();
 
-    my $path = $context->db_directory().'/'.$name.'-receiver-db';
+    my $path = catfile($context->db_directory(), $name.'-receiver-db');
     if (not -e $path) {
         write_file($path, encode_json({
             'conversation-map' => {},
@@ -164,7 +165,7 @@ sub run
     my ($self, $since_ts) = @_;
 
     my $db_dir = $self->{'context'}->db_directory();
-    my $lock_path = $db_dir.'/'.$self->{'name'}.'-lock';
+    my $lock_path = catfile($db_dir, $self->{'name'}.'-lock');
     my $lock = App::Paws::Lock->new(path => $lock_path);
     eval { $self->_run_internal($since_ts); };
     my $error = $@;
@@ -181,7 +182,7 @@ sub run_for_subset
     my ($self, $conversations_and_threads) = @_;
 
     my $db_dir = $self->{'context'}->db_directory();
-    my $lock_path = $db_dir.'/'.$self->{'name'}.'-lock';
+    my $lock_path = catfile($db_dir, $self->{'name'}.'-lock');
     my $lock = App::Paws::Lock->new(path => $lock_path);
     eval {
         my $context = $self->{'context'};
@@ -190,7 +191,7 @@ sub run_for_subset
         my $name    = $self->{'name'};
         my $runner  = $self->{'context'}->runner();
 
-        my $path = $context->db_directory().'/'.$name.'-receiver-db';
+        my $path = catfile($context->db_directory(), $name.'-receiver-db');
         if (not -e $path) {
             write_file($path, encode_json({
                 'conversation-map' => {},

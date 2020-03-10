@@ -3,10 +3,12 @@
 use warnings;
 use strict;
 
+use File::Spec::Functions qw(catfile);
+
 my ($mail_dir) = @ARGV;
 my $content = join '', <>;
 my $fn = $$.'-'.(int(rand(100000)));
-open my $fh, '>', $mail_dir.'/'.$fn or die $!;
+open my $fh, '>', catfile($mail_dir, $fn) or die $!;
 print $fh $content;
 close $fh;
 
