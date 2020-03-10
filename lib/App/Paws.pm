@@ -31,11 +31,152 @@ our $PING_TIMEOUT = 30;
 
 our $VERSION = '0.1';
 
+sub _is_maildir
+{
+    my ($dir) = @_;
+
+    for my $subdir (qw(cur new tmp)) {
+        if (not -d "$dir/$subdir") {
+            return;
+        }
+    }
+
+    return 1;
+}
+
+sub _validate_config
+{
+    my ($config) = @_;
+
+    my @errors;
+    my @warnings;
+
+    my $user_email = $config->{'user_email'};
+    if (not $user_email) {
+        push @errors, "user_email must be configured.";
+    }
+
+    my $sender = $config->{'sender'};
+    if ($sender and (ref $sender ne 'HASH')) {
+        push @errors, "sender must be a map.";
+    } elsif ($sender) {
+        my $fallback_sendmail = $sender->{'fallback_sendmail'};
+        if (not $fallback_sendmail) {
+            push @errors, "sender:fallback_sendmail must be configured.";
+        } elsif (not -e $fallback_sendmail) {
+            push @errors, "sender:fallback_sendmail is not executable.";
+        }
+        my $bounce_dir = $sender->{'bounce_dir'};
+        if (not $bounce_dir) {
+            push @errors, "sender:bounce_dir must be configured.";
+        } elsif (not -d $bounce_dir) {
+            push @errors, "sender:bounce_dir is not a directory.";
+        } elsif (not _is_maildir($bounce_dir)) {
+            push @errors, "sender:bounce_dir is not a maildir.";
+        }
+    }
+
+    my $workspaces = $config->{'workspaces'} || {};
+    if (ref $workspaces ne 'HASH') {
+        push @errors, "workspaces must be a map.";
+    } elsif (not keys %{$workspaces}) {
+        push @errors, "At least one workspace must be configured.";
+    } else {
+        for my $ws_name (keys %{$workspaces}) {
+            my $workspace = $workspaces->{$ws_name};
+            if (not $workspace->{'token'}) {
+                push @errors, "workspaces:$ws_name:token must be configured.";
+            } elsif ($workspace->{'token'} !~ /^xoxp-/) {
+                push @warnings, "workspaces:$ws_name:token does not appear ".
+                                "to be a Slack user token.";
+            }
+            my $conversations = $workspace->{'conversations'};
+            if ($conversations and (ref $conversations ne 'ARRAY')) {
+                push @errors, "workspaces:$ws_name:conversations must be ".
+                              "a list.";
+            }
+            my $modification_window = $workspace->{'modification_window'};
+            if ($modification_window and $modification_window !~ /^\d+$/) {
+                push @errors, "workspaces:$ws_name:modification_window ".
+                              "must be a positive integer.";
+            }
+            my $thread_expiry = $workspace->{'thread_expiry'};
+            if ($thread_expiry and $thread_expiry !~ /^\d+$/) {
+                push @errors, "workspaces:$ws_name:thread_expiry ".
+                              "must be a positive integer.";
+            }
+        }
+    }
+
+    my $receivers = $config->{'receivers'} || [];
+    if (ref $receivers ne 'ARRAY') {
+        push @errors, 'receivers must be a list.';
+    } else {
+        for (my $i = 0; $i < @{$receivers}; $i++) {
+            my $receiver = $receivers->[$i];
+            if (not $receiver->{'type'}) {
+                push @errors, "receivers:$i:type must be configured.";
+            }
+            if (not $receiver->{'workspace'}) {
+                push @errors, "receivers:$i:workspace must be configured.";
+            } elsif ((not @errors)
+                    and (not $workspaces->{$receiver->{'workspace'}})) {
+                push @errors, "receivers:$i:workspace is not present ".
+                            "in the configuration.";
+            }
+            if (not $receiver->{'name'}) {
+                push @errors, "receivers:$i:name must be configured.";
+            }
+        }
+    }
+
+    my $rate_limiting = $config->{'rate_limiting'} || {};
+    if (ref $rate_limiting ne 'HASH') {
+        push @errors, 'rate_limiting must be a map.';
+    } else {
+        my $initial = $rate_limiting->{'initial'};
+        if ($initial and ($initial !~ /^\d+$/)) {
+            push @errors, "rate_limiting:initial must be a ".
+                          "positive integer.";
+        }
+        my $backoff = $rate_limiting->{'backoff'};
+        if ($backoff and ($backoff !~ /^\d+$/)) {
+            push @errors, "rate_limiting:backoff must be a ".
+                          "positive integer.";
+        }
+    }
+
+    return (\@errors, \@warnings);
+}
+
 sub new
 {
     my $class = shift;
 
-    my $config = YAML::LoadFile($CONFIG_PATH);
+    my $config = eval { YAML::LoadFile($CONFIG_PATH); };
+    if (my $error = $@) {
+        $error =~ s/ at .*//;
+        print STDERR "Unable to load configuration ($CONFIG_PATH): $error";
+        exit(1);
+    }
+    my ($errors, $warnings) = _validate_config($config);
+    if (@{$errors}) {
+        print STDERR "Unable to validate configuration:\n";
+        for my $error (@{$errors}) {
+            print STDERR "  $error\n";
+        }
+        for my $warning (@{$warnings}) {
+            print STDERR "  $warning\n";
+        }
+        exit(1);
+    }
+    if (@{$warnings}) {
+        print STDERR "Warnings during configuration validation:\n";
+        for my $warning (@{$warnings}) {
+            print STDERR "  $warning\n";
+        }
+    }
+
     for my $dir ($QUEUE_DIR, $DB_DIR) {
         if (not -e $dir) {
             mkdir $dir or die $!;

@@ -9,6 +9,7 @@ use App::Paws::Runner;
 use App::Paws::Workspace;
 
 our $SLACK_BASE_URL = 'https://slack.com/api';
+our $DEFAULT_DOMAIN_NAME = 'slack.alt';
 
 sub new
 {
@@ -69,7 +70,7 @@ sub runner
 
 sub domain_name
 {
-    return $_[0]->{'config'}->{'domain_name'};
+    return $_[0]->{'config'}->{'domain_name'} || 'slack.alt';
 }
 
 sub user_email

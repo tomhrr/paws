@@ -24,6 +24,9 @@ sub new
             qw(context name token conversations
                modification_window thread_expiry)),
     };
+    if (not $self->{'conversations'}) {
+        $self->{'conversations'} = ['*'];
+    }
 
     bless $self, $class;
 
