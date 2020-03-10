@@ -4,8 +4,8 @@ Send/receive Slack messages via email.  Useful if you use a mail
 client like [Mutt](http://mutt.org) or
 [mu4e](https://www.djcbsoftware.nl/code/mu/mu4e.html) and would prefer
 to communicate with Slack via that client.  Supports sending messages
-to Slack via a sendmail-like command, and receiving messages from
-Slack into maildirs, or for further processing by an MDA.
+via a sendmail-like command, and receiving messages into maildirs, or
+for further processing by an MDA.
 
 ### Install
 
@@ -22,12 +22,12 @@ https://cpanmin.us.
 
 A user token is needed for each workspace.  To generate these tokens:
 
- - run `paws-register`: this will print a URL to standard output;
+ - run `paws-register`: a URL will be printed to standard output;
  - load the URL into a browser: Slack's authorisation page should
    appear;
  - grant access to the workspace: a success page should appear,
    containing a command like `paws-register {code}`;
- - run this command: this will print the user token to standard
+ - run this command: the user token will be printed to standard
    output.
 
 After the tokens have been generated, make a `.paws` directory in your
@@ -85,7 +85,7 @@ sendmail command (mail that is not for Slack will be passed off to the
 conversations have the form `{conversation-name}@{workspace}.slack.alt`
 (e.g.  `im/slackbot@myworkspace.slack.alt`).  Email addresses for
 Slack users have the form `{user}@{workspace}.slack.alt` (e.g.
-`slackbot@myworkspace.slack.alt`).  `paws-send-queued' must also be
+`slackbot@myworkspace.slack.alt`).  `paws-send-queued` must also be
 run periodically, in order to resend messages that have been queued
 due to temporary problems.
 
@@ -157,12 +157,13 @@ Type-specific configuration:
    {time}".
  - If mail is sent to `paws-send` with multiple Slack users as
    recipients, a new group conversation containing those users will be
-   created implicitly, the message will be sent to that conversation.
+   created implicitly, and the message will be sent to that
+   conversation.
  - The `paws-aliases` command can be used to print a list of Slack
    user alias entries, for use with Mutt.  An alias username has the
    form:
 
-    `slack-$workspace_name-$user_name`
+    `slack-{workspace}-{user}`
 
 ### Bugs/problems/suggestions
 
