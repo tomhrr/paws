@@ -14,8 +14,8 @@ for further processing by an MDA.
     make test
     sudo make install
 
-Alternatively, run `cpanm .` from within the checkout directory. This
-will fetch and install module dependencies, if required. See
+Alternatively, run `sudo cpanm .` from within the checkout directory.
+This will fetch and install module dependencies, if required. See
 https://cpanmin.us.
 
 ### Basic setup
@@ -40,7 +40,8 @@ home directory.  Configuration is via a YAML file named `config`,
 placed within that directory.  A minimal example is like so:
 
 ```yaml
-# The addressee for email received from Slack.
+# The addressee for email received from Slack (typically your email
+# address).
 user_email: "user@example.org"
 # Per-workspace configuration.
 workspaces:
@@ -147,9 +148,9 @@ Type-specific configuration:
 
 ### Notes
 
- - Each executable takes an optional `--debug` argument.  If set,
-   the executable will print debug information to standard error as it
-   progresses.
+ - If the `PAWS_DEBUG` environment variable is set to a true value,
+   then each executable will print debug information to standard error
+   as it progresses.
  - Files from Slack conversations are downloaded and presented as
    attachments in emails.  Attachments are uploaded to Slack as files.
  - Messages from a given conversation are represented as being replies
@@ -172,6 +173,10 @@ Type-specific configuration:
    form:
 
     `slack-{workspace}-{user}`
+
+ - `paws-send` will reject (bounce) mail that is addressed to a
+   combination of Slack conversations/users and non-Slack email
+   addresses.
 
 ### Bugs/problems/suggestions
 
