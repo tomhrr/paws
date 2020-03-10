@@ -6,82 +6,72 @@ use strict;
 use HTTP::Daemon;
 use JSON::XS qw(encode_json decode_json);
 
-my $true = bless( do{\(my $o = 1)}, 'JSON::PP::Boolean' );
+my $true  = bless( do{\(my $o = 1)}, 'JSON::PP::Boolean' );
 my $false = bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' );
 
 my $counter = 1;
 
 my %channel_template = (
-    'is_im' => $false,
-    'is_channel' => $false,
-    'is_private' => $false,
+    'is_im'                      => $false,
+    'is_channel'                 => $false,
+    'is_private'                 => $false,
+    'is_shared'                  => $false,
+    'is_pending_ext_shared'      => $false,
+    'is_org_shared'              => $false,
+    'is_group'                   => $false,
+    'is_archived'                => $false,
+    'is_mpim'                    => $false,
+    'is_ext_shared'              => $false,
+    'is_general'                 => $true,
+    'is_member'                  => $true,
+    'name_normalized'            => 'general',
+    'creator'                    => 'U00000001',
+    'parent_conversation'        => undef,
+    'unlinked'                   => 0,
+    'pending_shared'             => [],
     'pending_connected_team_ids' => [],
-    'num_members' => 97,
-    'is_shared' => $false,
-    'is_pending_ext_shared' => $false,
-    'is_org_shared' => $false,
-    'name_normalized' => 'general',
-    'creator' => 'U00000001',
-    'is_group' => $false,
-    'parent_conversation' => undef,
-    'is_archived' => $false,
-    'is_mpim' => $false,
-    'is_ext_shared' => $false,
-    'pending_shared' => [],
-    'is_general' => $true,
-    'unlinked' => 0,
-    'is_member' => $true
+    'num_members'                => 97,
 );
 
 my $channel_id = 1;
-my @channels = ({
-    %channel_template,
-    'is_channel' => $true,
-    'name' => 'general',
-    'id' => 'C0000000'.$channel_id++,
-    'created' => 1458566704,
-}, {
-    %channel_template,
-    'is_channel' => $true,
-    'name' => 'work',
-    'id' => 'C0000000'.$channel_id++,
-    'created' => 1458566704,
-});
+my @channels = ({ %channel_template,
+                  'is_channel' => $true,
+                  'name'       => 'general',
+                  'id'         => 'C0000000'.$channel_id++,
+                  'created'    => 1458566704 },
+                { %channel_template,
+                  'is_channel' => $true,
+                  'name'       => 'work',
+                  'id'         => 'C0000000'.$channel_id++,
+                  'created'    => 1458566704 });
 
-my @ims = ({
-    'is_org_shared' => $false,
-    'created' => 1537922598,
-    'id' => 'D00000001',
-    'priority' => '0.018709981367191',
-    'user' => 'U00000003',
-    'is_im' => $true,
-    'is_user_deleted' => $false
-}, {
-    'is_user_deleted' => $false,
-    'is_im' => $true,
-    'user' => 'USLACKBOT',
-    'priority' => 0,
-    'id' => 'D00000002',
-    'created' => 1537922598,
-    'is_org_shared' => $false
-});
+my @ims = ({ 'is_org_shared'   => $false,
+             'created'         => 1537922598,
+             'id'              => 'D00000001',
+             'priority'        => '0.018709981367191',
+             'user'            => 'U00000003',
+             'is_im'           => $true,
+             'is_user_deleted' => $false },
+           { 'is_org_shared'   => $false,
+             'created'         => 1537922598,
+             'id'              => 'D00000002',
+             'priority'        => 0,
+             'user'            => 'USLACKBOT',
+             'is_im'           => $true,
+             'is_user_deleted' => $false });
 
-my @users = (
-    { name => 'slackbot',
-      real_name => 'Slack Bot',
-        id => 'USLACKBOT' },
-    { id => 'U00000003',
-      real_name => 'User 3',
-        name => 'user3' },
-);
-my @users2 = (
-    { id => 'U00000002',
-      real_name => 'User 2',
-        name => 'user2' },
-    { id => 'U00000001',
-      real_name => 'User 1',
-        name => 'user1' },
-);
+my @users = ({ name      => 'slackbot',
+               real_name => 'Slack Bot',
+               id        => 'USLACKBOT' },
+             { name      => 'user3',
+               id        => 'U00000003',
+               real_name => 'User 3' });
+my @users2 = ({ name      => 'user1',
+                id        => 'U00000001',
+                real_name => 'User 1' },
+              { name      => 'user2',
+                id        => 'U00000002',
+                real_name => 'User 2' });
 
 our $ts_base    = time();
 our $ts_base_p1 = $ts_base - 1;
@@ -91,100 +81,63 @@ our $ts_base_p4 = $ts_base - 4;
 our $ts_base_p5 = $ts_base - 5;
 
 my %channel_id_to_history = (
-    C00000001 => [
-        { 
-            ts => "$ts_base.0",
-            text => '<@U00000001> testing',
-            type => 'message'
-        },
-        { 
-            ts => "$ts_base_p1.0",
-            text => 'ding2',
-            user => 'U00000005',
-            type => 'message'
-        },
-    ],
-    C00000002 => [
-        { 
-            ts => "$ts_base.0",
-            text => 'ding',
-            user => 'U00000001',
-            type => 'message'
-        },
-        { 
-            ts => "$ts_base_p1.0",
-            text => 'ding2',
-            user => 'U00000002',
-            type => 'message'
-        },
-        {
-            ts => "$ts_base_p2.0",
-            text => 'thread!',
-            user => 'U00000002',
-            type => 'message',
-            thread_ts => "$ts_base_p3.0",
-        },
-    ],
-    D00000001 => [
-        { 
-            ts => "$ts_base.0",
-            text => 'ding',
-            user => 'U00000001',
-            type => 'message'
-        },
-        { 
-            ts => "$ts_base_p1.0",
-            text => 'ding2',
-            user => 'U00000002',
-            type => 'message'
-        },
-    ],
-    D00000002 => [
-        { 
-            ts => "$ts_base.0",
-            text => 'ding',
-            user => 'U00000001',
-            type => 'message'
-        },
-        { 
-            ts => "$ts_base_p1.0",
-            text => 'ding2',
-            user => 'U00000002',
-            type => 'message'
-        },
-    ],
+    C00000001 => [ { ts   => "$ts_base.0",
+                     text => '<@U00000001> testing',
+                     type => 'message' },
+                   { ts   => "$ts_base_p1.0",
+                     text => 'ding2',
+                     user => 'U00000005',
+                     type => 'message' } ],
+    C00000002 => [ { ts   => "$ts_base.0",
+                     text => 'ding',
+                     user => 'U00000001',
+                     type => 'message' },
+                   { ts   => "$ts_base_p1.0",
+                     text => 'ding2',
+                     user => 'U00000002',
+                     type => 'message' },
+                   { ts        => "$ts_base_p2.0",
+                     text      => 'thread!',
+                     user      => 'U00000002',
+                     type      => 'message',
+                     thread_ts => "$ts_base_p3.0" } ],
+    D00000001 => [ { ts   => "$ts_base.0",
+                     text => 'ding',
+                     user => 'U00000001',
+                     type => 'message' },
+                   { ts   => "$ts_base_p1.0",
+                     text => 'ding2',
+                     user => 'U00000002',
+                     type => 'message' } ],
+    D00000002 => [ { ts   => "$ts_base.0",
+                     text => 'ding',
+                     user => 'U00000001',
+                     type => 'message' },
+                   { ts   => "$ts_base_p1.0",
+                     text => 'ding2',
+                     user => 'U00000002',
+                     type => 'message' } ],
 );
 
 my %thread_to_history = (
     C00000002 => {
-        "$ts_base_p3.0" => [
-            { 
-                ts => "$ts_base_p4.0",
-                text => 'thread-reply-1!',
-                user => 'U00000001',
-                type => 'message'
-            },
-            { 
-                ts => "$ts_base_p5.0",
-                text => 'thread-reply-2!',
-                user => 'U00000002',
-                type => 'message',
-                files => [
-                    {
-                        url_private => '/file/1',
-                        mimetype => 'text/plain'
-                    }
-                ],
-            },
-        ],
-    }
+        "$ts_base_p3.0" => [ { ts   => "$ts_base_p4.0",
+                               text => 'thread-reply-1!',
+                               user => 'U00000001',
+                               type => 'message' },
+                             { ts   => "$ts_base_p5.0",
+                               text => 'thread-reply-2!',
+                               user => 'U00000002',
+                               type => 'message',
+                               files => [ { url_private => '/file/1',
+                                            mimetype => 'text/plain' } ] }, ],
+    },
 );
 
 my %files = (
     1 => 'asdfasdf'
 );
 
-my $pid;
 sub new
 {
     my $class = shift;
@@ -224,10 +177,9 @@ sub _handle_request
             }
                 
             $res->content(encode_json({
-                ok => $true,
+                ok      => $true,
                 members => \@users_ret,
                 @extra_ret,
-
             }));
         } elsif ($path eq '/conversations.history') {
             my %args = $r->uri()->query_form();
@@ -242,7 +194,7 @@ sub _handle_request
 
             $res->code(200);
             $res->content(encode_json({
-                ok => $true,
+                ok       => $true,
                 messages => $history
             }));
         } elsif ($path eq '/conversations.replies') {
@@ -259,7 +211,7 @@ sub _handle_request
 
             $res->code(200);
             $res->content(encode_json({
-                ok => $true,
+                ok       => $true,
                 messages => $history
             }));
         } elsif ($path =~ /^\/file\/(.*)$/) {
@@ -289,12 +241,10 @@ sub _handle_request
                     die "Unable to post message";
                 }
                 push @{$ref},
-                    { 
-                        ts => time().'.'.sprintf("%06d", $counter++),
-                        text => $text,
-                        user => 'U00000001',
-                        type => 'message'
-                    };
+                    { ts   => time().'.'.sprintf("%06d", $counter++),
+                      text => $text,
+                      user => 'U00000001',
+                      type => 'message' };
                 $res->code(200);
             }
         } elsif ($path eq '/conversations.open') {
@@ -305,13 +255,13 @@ sub _handle_request
             push @channels, {
                 %channel_template,
                 'is_channel' => $true,
-                'name' => $data->{'users'},
-                'id' => $id,
-                'created' => time(),
+                'name'       => $data->{'users'},
+                'id'         => $id,
+                'created'    => time(),
             };
             $channel_id_to_history{$id} = [];
             my $response_data = {
-                ok => $true,
+                ok      => $true,
                 channel => { id => $id }
             };
             $res->content(encode_json($response_data));
@@ -392,9 +342,8 @@ sub _handle_request
                 $ref->[$#{$ref}]->{'files'} ||= [];
                 push @{$ref->[$#{$ref}]->{'files'}},
                     { url_private => '/file/'.$data{'filename'},
-                    mimetype => 'text/plain' };
+                      mimetype    => 'text/plain' };
                 $files{$data{'filename'}} = $data{'file'};
-
                 $res->code(200);
             }
         } elsif ($path eq '/paws.thread.make') {
@@ -409,12 +358,10 @@ sub _handle_request
                 if ($msg->{'ts'} eq $ts) {
                     $msg->{'thread_ts'} = $thread_ts;
                     $thread_to_history{$channel_id}->{$thread_ts} = [
-                        {
-                            ts   => $thread_msg_ts,
-                            text => 'thread starts here',
-                            user => 'U00000001',
-                            type => 'message'
-                        }
+                        { ts   => $thread_msg_ts,
+                          text => 'thread starts here',
+                          user => 'U00000001',
+                          type => 'message' }
                     ];
                     $found = 1;
                     last;
@@ -440,6 +387,8 @@ sub _handle_request
 
     return 1;
 }
+
+my $pid;
 
 sub run
 {
