@@ -5,4 +5,4 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v1
-      - run: sudo apt-get install build-essential perl libfile-slurp-perl libhtml-parser-perl libjson-xs-perl libwww-perl libmime-tools-perl libyaml-perl libipc-run3-perl libio-capture-perl libipc-shareable-perl libhttp-async-perl libio-async-perl libio-async-ssl-perl libdatetime-perl cpanminus && cpanm Net::Async::WebSocket::Client && perl Makefile.PL && make && make test
+      - run: sudo apt-get install build-essential perl libfile-slurp-perl libhtml-parser-perl libjson-xs-perl libwww-perl libmime-tools-perl libyaml-perl libipc-run3-perl libio-capture-perl libipc-shareable-perl libhttp-async-perl libio-async-perl libio-async-ssl-perl libdatetime-perl cpanminus && sudo cpanm Net::Async::WebSocket::Client && perl Makefile.PL && make && make test
