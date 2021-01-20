@@ -90,14 +90,14 @@ sub _add_attachment
     $req->method('GET');
     my $filename = $file->{'url_private'};
     $filename =~ s/.*\///;
-    my $res;
-    my $runner = $context->{'runner'};
-    $runner->add('conversations.replies', $req,
-                 sub { my ($runner, $internal_res) = @_;
-                       $res = $internal_res; });
-    while (not $res) {
-        $runner->poke('conversations.replies');
+    # File retrieval via the runner does not work, for some reason, so
+    # this just makes the call directly.
+    my $ua = $context->ua();
+    my $res = $ua->request($req);
+    if (not $res->is_success()) {
+        warn "Unable to download attachment ($url_private)";
     }
+
     $entity->attach(Type     => $file->{'mimetype'},
                     Data     => $res->content(),
                     Filename => $filename);
