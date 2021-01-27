@@ -5,6 +5,7 @@ use strict;
 
 use HTTP::Daemon;
 use JSON::XS qw(encode_json decode_json);
+use List::Util qw(first);
 
 my $true  = bless( do{\(my $o = 1)}, 'JSON::PP::Boolean' );
 my $false = bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' );
@@ -368,6 +369,30 @@ sub _handle_request
                 }
             }
             if ($found) {
+                $res->code(200);
+            } else {
+                $res->code(404);
+            }
+        } elsif ($path eq '/paws.channel.join') {
+            my $data = decode_json($r->content());
+            my $channel_id = $data->{'channel'};
+            my $channel =
+                first { $_->{'id'} eq $channel_id }
+                    @channels;
+            if ($channel) {
+                $channel->{'is_member'} = 1;
+                $res->code(200);
+            } else {
+                $res->code(404);
+            }
+        } elsif ($path eq '/paws.channel.leave') {
+            my $data = decode_json($r->content());
+            my $channel_id = $data->{'channel'};
+            my $channel =
+                first { $_->{'id'} eq $channel_id }
+                    @channels;
+            if ($channel) {
+                $channel->{'is_member'} = 0;
                 $res->code(200);
             } else {
                 $res->code(404);
