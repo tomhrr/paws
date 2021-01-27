@@ -113,6 +113,9 @@ sub _run_internal
                     or ($conversation->{'is_member'})) {
                 my $name = $conversation->{'name'};
                 $conversation_map->{$name} = $conversation->{'id'};
+            } elsif (not $conversation->{'is_member'}) {
+                my $name = $conversation->{'name'};
+                delete $conversation_map->{$name};
             }
         }
         for my $name (keys %{$conversation_map}) {
