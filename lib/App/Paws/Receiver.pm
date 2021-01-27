@@ -263,6 +263,15 @@ sub run_for_subset
             $db->{'conversations'}->{$name} = $cs->to_data();
         }
 
+        $ws->conversations_obj()->retrieve();
+        for my $conversation (@{$ws->conversations_obj()->get_list()}) {
+            if (($conversation->{'type'} ne 'im')
+                    and (not $conversation->{'is_member'})) {
+                my $name = $conversation->{'name'};
+                delete $conversation_map->{$name};
+            }
+        }
+
         $db->{'conversation-map'} = $conversation_map;
 
         write_file($path, encode_json($db));
