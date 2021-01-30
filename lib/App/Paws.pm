@@ -458,8 +458,8 @@ sub receive
                     my @old_clients = @{$ws_to_old_clients{$ws_name}};
                     for my $client (@old_clients) {
                         my %client_to_id = reverse %id_to_client;
-                        debug("Old client is $client (".
-                              $client_to_id{$client}.")");
+                        my $client_id = $client_to_id{$client};
+                        debug("Old client is $client ($client_id)");
                         my $latest_pong = $client_to_details{$client}->{'pong'};
                         debug("Old ping response is $latest_pong");
 
@@ -475,6 +475,7 @@ sub receive
                         debug("Removing old client for $ws_name at $now");
                         $loop->remove($client);
                         delete $client_to_details{$client};
+                        delete $id_to_client{$client_id};
                     }
                     $ws_to_old_clients{$ws_name} = [];
                 }
