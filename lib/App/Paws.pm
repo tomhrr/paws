@@ -473,7 +473,11 @@ sub receive
                             exit(1);
                         }
                         debug("Removing old client for $ws_name at $now");
-                        $loop->remove($client);
+                        eval { $loop->remove($client); };
+                        if (my $error = $@) {
+                            print STDERR "Unable to remove client: ".
+                                         $error."\n";
+                        }
                         delete $client_to_details{$client};
                         delete $id_to_client{$client_id};
                     }
