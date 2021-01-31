@@ -47,21 +47,33 @@ sub to_data
     };
 }
 
+sub _get_response_str
+{
+    my ($res) = @_;
+
+    my $req_str = $res->request()->as_string();
+    my $res_str = $res->as_string();
+    $req_str =~ s/(\r?\n)+$//g;
+    $res_str =~ s/(\r?\n)+$//g;
+
+    return $req_str."; ".$res_str;
+}
+
 sub _process_response
 {
     my ($res) = @_;
 
     if (not $res->is_success()) {
-        my $res_str = $res->as_string();
-        $res_str =~ s/(\r?\n)+$//g;
-        print STDERR "Unable to process response: $res_str\n";
+        print STDERR "Unable to process response: ".
+                     _get_response_str($res)."\n";
         return;
     }
     my $data = decode_json($res->content());
     if ($data->{'error'}) {
         my $res_str = $res->as_string();
         $res_str =~ s/(\r?\n)+$//g;
-        print STDERR "Error in response: $res_str\n";
+        print STDERR "Error in response: ".
+                     _get_response_str($res)."\n";
         return;
     }
 
