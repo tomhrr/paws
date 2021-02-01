@@ -333,7 +333,7 @@ sub receive_threads
                     return;
                 }
                 if (my $error = $data->{'error'}) {
-                    if ($error eq 'channel_not_found') {
+                    if ($error eq 'thread_not_found') {
                         if ($thread_data->{'not_found'}) {
                             return;
                         } else {
