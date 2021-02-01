@@ -30,6 +30,7 @@ sub new
     $self->{'deliveries'} ||= {};
     $self->{'deletions'}  ||= {};
     $self->{'edits'}      ||= {};
+    $self->{'not_found'}  ||= 0;
 
     $self->{'threads_retrieved'} = {};
 
@@ -43,7 +44,8 @@ sub to_data
 
     return { map { $_ => $self->{$_} }
         qw(first_ts last_ts threads
-           deliveries deletions edits)
+           deliveries deletions edits
+           not_found)
     };
 }
 
@@ -69,15 +71,17 @@ sub _process_response
         return;
     }
     my $data = decode_json($res->content());
-    if ($data->{'error'}) {
-        my $res_str = $res->as_string();
-        $res_str =~ s/(\r?\n)+$//g;
-        print STDERR "Error in response: ".
-                     _get_response_str($res)."\n";
-        return;
-    }
-
     return $data;
+}
+
+sub _process_error_response
+{
+    my ($res) = @_;
+
+    print STDERR "Error in response: ".
+                 _get_response_str($res)."\n";
+
+    return;
 }
 
 sub _check_for_new_threads
@@ -189,6 +193,21 @@ sub receive_messages
             if (not $data) {
                 return;
             }
+            if (my $error = $data->{'error'}) {
+                if ($error eq 'channel_not_found') {
+                    if ($self->{'not_found'}) {
+                        return;
+                    } else {
+                        $self->{'not_found'} = 1;
+                        _process_error_response($res);
+                        return;
+                    }
+                } else {
+                    _process_error_response($res);
+                    return;
+                }
+            }
+            $self->{'not_found'} = 0;
 
             $first_ts ||= minstr map { $_->{'ts'} } @{$data->{'messages'}};
             $self->{'first_ts'} = $first_ts;
@@ -313,6 +332,21 @@ sub receive_threads
                 if (not $data) {
                     return;
                 }
+                if (my $error = $data->{'error'}) {
+                    if ($error eq 'channel_not_found') {
+                        if ($thread_data->{'not_found'}) {
+                            return;
+                        } else {
+                            $thread_data->{'not_found'} = 1;
+                            _process_error_response($res);
+                            return;
+                        }
+                    } else {
+                        _process_error_response($res);
+                        return;
+                    }
+                }
+                $thread_data->{'not_found'} = 0;
 
                 my @messages =
                     map { App::Paws::Message->new($context, $ws,
