@@ -1,6 +1,6 @@
 ## paws
 
-[![Build Status](https://github.com/tomhrr/paws/workflows/build/badge.svg?branch=master)](https://github.com/tomhrr/paws/actions)
+[![Build Status](https://github.com/tomhrr/paws/workflows/build/badge.svg)](https://github.com/tomhrr/paws/actions)
 
 Send/receive Slack messages via email.  Useful if you use a mail
 client like [Mutt](http://mutt.org) or
