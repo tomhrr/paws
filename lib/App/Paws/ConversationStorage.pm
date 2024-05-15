@@ -297,9 +297,15 @@ sub receive_threads
     my @thread_tss = ($thread_ts) ? ($thread_ts) : (keys %{$threads});
     for my $thread_ts (@thread_tss) {
         if ($self->{'threads_retrieved'}->{$thread_ts}) {
+            debug("$ws_name/$name: $thread_ts has been retrieved, skipping");
             next;
         }
         my $thread_data = $threads->{$thread_ts};
+        if (exists $thread_data->{'expired'}
+                and $thread_data->{'expired'} eq '1') {
+            debug("$ws_name/$name: $thread_ts is expired, skipping");
+            next;
+        }
         my $last_ts     = $thread_data->{'last_ts'} || 1;
         my $deliveries  = $thread_data->{'deliveries'};
         my $deletions   = $thread_data->{'deletions'};
@@ -405,7 +411,7 @@ sub receive_threads
                             and ($last_ts < (time() - $ws->thread_expiry()
                                                     - UNNEEDED_BUFFER()))) {
                         debug("Thread ($thread_ts) is unneeded, deleting");
-                        delete $threads->{$thread_ts};
+                        $threads->{$thread_ts}->{'expired'} = 1;
                     }
                 }
             };
