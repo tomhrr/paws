@@ -41,6 +41,7 @@ my $output = WriteMakefile(
         'IO::Async::SSL'                => 0,
         'Net::Async::WebSocket::Client' => 0,
         'DateTime'                      => 0,
+        'constant::override'            => 0,
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'App-Paws-*' },
