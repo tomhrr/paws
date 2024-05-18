@@ -297,7 +297,7 @@ sub _send_queued_single
                  ]);
         my $res = $ua->request($uue_req);
         if (not $res->is_success()) {
-            print STDERR "Unable to send attachment, bouncing: ".
+            print STDERR "Unable to get attachment URL, bouncing: ".
                          $res->as_string()."\n";
             $self->_write_bounce($message_id,
                                  $res->as_string());
@@ -305,7 +305,7 @@ sub _send_queued_single
         }
         my $data = decode_json($res->decoded_content());
         if (not $data->{'ok'}) {
-            print STDERR "Unable to send attachment, bouncing: ".
+            print STDERR "Unable to decode attachment URL response, bouncing: ".
                          $res->as_string()."\n";
             $self->_write_bounce($message_id,
                                  $res->as_string());
@@ -324,7 +324,7 @@ sub _send_queued_single
                  ]);
         $res = $ua->request($upload_req);
         if (not $res->is_success()) {
-            print STDERR "Unable to send attachment, bouncing: ".
+            print STDERR "Unable to upload attachment, bouncing: ".
                          $res->as_string()."\n";
             $self->_write_bounce($message_id,
                                  $res->as_string());
@@ -360,7 +360,8 @@ sub _send_queued_single
         }
         $data = decode_json($res->decoded_content());
         if (not $data->{'ok'}) {
-            print STDERR "Unable to complete uploads, bouncing: ".
+            print STDERR "Unable to decode upload completion ".
+                         "response, bouncing: ".
                          $res->as_string()."\n";
             $self->_write_bounce($message_id,
                                  $res->as_string());

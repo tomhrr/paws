@@ -5,7 +5,8 @@ use strict;
 
 use HTTP::Daemon;
 use JSON::XS qw(encode_json decode_json);
-use List::Util qw(first);
+use List::Util qw(first max);
+use URI::Encode qw(uri_decode);
 
 my $true  = bless( do{\(my $o = 1)}, 'JSON::PP::Boolean' );
 my $false = bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' );
@@ -135,6 +136,7 @@ my %thread_to_history = (
     },
 );
 
+my %filenames;
 my %files = (
     1 => 'asdfasdf'
 );
@@ -152,7 +154,8 @@ sub _handle_request
     my ($c, $r) = @_;
 
     my $method = $r->method();
-    my $path = $r->uri()->path();
+    my $uri = $r->uri();
+    my $path = $uri->path();
 
     my $res = HTTP::Response->new();
     if ($method eq 'GET') {
@@ -184,7 +187,7 @@ sub _handle_request
             }));
         } elsif ($path eq '/conversations.history') {
             my %args = $r->uri()->query_form();
-            my $channel_id = $args{'channel'};
+            my $channel_id = $args{'channel'} || '';
             my $history = $channel_id_to_history{$channel_id};
             if ($args{'oldest'} and not $args{'latest'}) {
                 $history = [
@@ -200,7 +203,7 @@ sub _handle_request
             }));
         } elsif ($path eq '/conversations.replies') {
             my %args = $r->uri()->query_form();
-            my $channel_id = $args{'channel'};
+            my $channel_id = $args{'channel'} || '';
             my $thread_ts = $args{'ts'};
             my $history = $thread_to_history{$channel_id}->{$thread_ts};
             if ($args{'oldest'} and not $args{'latest'}) {
@@ -322,7 +325,26 @@ sub _handle_request
             } else {
                 $res->code(404);
             }
-        } elsif ($path eq '/files.upload') {
+        } elsif ($path eq '/files.getUploadURLExternal') {
+            my $content = $r->content();
+            my %qf =
+                map { (split '=', $_) }
+                    split '&', $content;
+            my $filename = $qf{'filename'};
+            my $length = $qf{'length'};
+            my $port = $c->sockport();
+            my $largest_id = max(keys %files);
+            my $next_id = $largest_id + 1;
+            my %content = (
+                upload_url => "http://localhost:$port/files.postUpload",
+                file_id    => $next_id,
+                ok         => \1,
+            );
+            $filenames{$next_id} = $filename;
+            my $content_str = encode_json(\%content);
+            $res->content($content_str);
+            $res->code(200);
+        } elsif ($path eq '/files.postUpload') {
             my $content = $r->content();
             my ($separator) = ($content =~ /^(.*?\r\n)/);
             my @parts = grep { $_ } split /$separator/, $content;
@@ -338,15 +360,29 @@ sub _handle_request
             if ($data{'file'} =~ /Status: (\d\d\d)/) {
                 $res->code($1);
             } else {
-                my $channel_id = $data{'channels'};
-                my $ref = $channel_id_to_history{$channel_id};
-                $ref->[$#{$ref}]->{'files'} ||= [];
-                push @{$ref->[$#{$ref}]->{'files'}},
-                    { url_private => '/file/'.$data{'filename'},
-                      mimetype    => 'text/plain' };
-                $files{$data{'filename'}} = $data{'file'};
+                my $largest_id = max(keys %files);
+                my $next_id = $largest_id + 1;
+                $files{$filenames{$next_id}} = $data{'file'};
                 $res->code(200);
             }
+        } elsif ($path eq '/files.completeUploadExternal') {
+            my $content = $r->content();
+            my %qf =
+                map { (split '=', $_) }
+                    split '&', $content;
+            my $files = decode_json(uri_decode($qf{'files'}));
+            my $channel_id = $qf{'channel_id'};
+
+            my $ref = $channel_id_to_history{$channel_id};
+            $ref->[$#{$ref}]->{'files'} ||= [];
+            for my $file (@{$files}) {
+                my $id = $file->{'id'};
+                push @{$ref->[$#{$ref}]->{'files'}},
+                    { url_private => '/file/'.$filenames{$id},
+                      mimetype    => 'text/plain' };
+            }
+            $res->content(encode_json({ ok => \1 }));
+            $res->code(200);
         } elsif ($path eq '/paws.thread.make') {
             my $data = decode_json($r->content());
             my $channel_id = $data->{'channel'};
