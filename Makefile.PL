@@ -6,7 +6,7 @@ use ExtUtils::MakeMaker::Config;
 
 my $output = WriteMakefile(
     NAME          => 'App::Paws',
-    AUTHOR        => 'Tom Harrison <tomh5908@gmail.com>',
+    AUTHOR        => 'Tom Harrison <tomhrr@tomhrr.org>',
     VERSION_FROM  => 'lib/App/Paws.pm',
     ABSTRACT      => 'Send/receive Slack message via email',
     LICENSE       => 'perl_5',

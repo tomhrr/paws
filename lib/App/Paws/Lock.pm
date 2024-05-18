@@ -117,7 +117,7 @@ Unlocks the lock, if it still exists and was locked by this object.
 
 =head1 AUTHOR
 
-Tom Harrison (C<tomh5908@gmail.com>)
+Tom Harrison (C<tomhrr@tomhrr.org>)
 
 =head1 COPYRIGHT & LICENCE
 

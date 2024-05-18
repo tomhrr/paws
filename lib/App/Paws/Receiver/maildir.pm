@@ -131,7 +131,7 @@ The lower-bound timestamp is used to skip messages in the history.
 
 =head1 AUTHOR
 
-Tom Harrison (C<tomh5908@gmail.com>)
+Tom Harrison (C<tomhrr@tomhrr.org>)
 
 =head1 COPYRIGHT & LICENCE
 
