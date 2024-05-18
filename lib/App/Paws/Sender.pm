@@ -284,7 +284,7 @@ sub _send_queued_single
         my $length = (stat($temp_file->filename()))[7];
 
 	my $uri =
-	    URI->new($content->slack_base_url().
+	    URI->new($context->slack_base_url().
 		     '/files.getUploadURLExternal');
         my $uue_req =
             POST($uri,
@@ -318,7 +318,7 @@ sub _send_queued_single
                      file     => [$temp_file->filename()],
                      token    => $ws->token(),
                  ]);
-        my $res = $ua->request($upload_req);
+        $res = $ua->request($upload_req);
         if (not $res->is_success()) {
             print STDERR "Unable to send attachment, bouncing: ".
                          $res->as_string()."\n";
@@ -329,7 +329,7 @@ sub _send_queued_single
     }
 
     my $cue_uri =
-        URI->new($content->slack_base_url().
+        URI->new($context->slack_base_url().
                  '/files.completeUploadExternal');
     my $files = encode_json([
         map { +{ id => $_ } }
@@ -342,7 +342,7 @@ sub _send_queued_single
                  token      => $ws->token(),
                  channel_id => $conversation_id
              ]);
-    my $res = $ua->request($uue_req);
+    $res = $ua->request($cue_req);
     if (not $res->is_success()) {
         print STDERR "Unable to complete uploads, bouncing: ".
                      $res->as_string()."\n";
@@ -350,7 +350,7 @@ sub _send_queued_single
                              $res->as_string());
         return 1;
     }
-    my $data = decode_json($res->decoded_content());
+    $data = decode_json($res->decoded_content());
     if (not $data->{'ok'}) {
         print STDERR "Unable to complete uploads, bouncing: ".
                      $res->as_string()."\n";
