@@ -2,8 +2,8 @@
 
 [![Build Status](https://github.com/tomhrr/paws/workflows/build/badge.svg)](https://github.com/tomhrr/paws/actions)
 
-Send/receive Slack messages via email.  Useful if you use a mail
-client like [Mutt](http://mutt.org) or
+sendmail/maildir interface to Slack.  Useful if you use a mail client
+like [Mutt](http://mutt.org) or
 [mu4e](https://www.djcbsoftware.nl/code/mu/mu4e.html) and would prefer
 to communicate with Slack via that client.  Supports sending messages
 via a sendmail-like command, and receiving messages into maildirs, or
