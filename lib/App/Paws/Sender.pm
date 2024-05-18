@@ -101,7 +101,7 @@ sub _get_conversation_for_single_recipient
     my ($local, $domain) = split /@/, $to;
     my ($type, $name) = split /\s*\/\s*/, $local;
     my $thread_ts;
-    if ($name =~ /\+/) {
+    if (($name || '') =~ /\+/) {
         ($thread_ts) = ($name =~ /.*\+(.*)/);
         $name =~ s/\+.*//;
     }
@@ -121,7 +121,7 @@ sub _get_conversation_for_single_recipient
     }
 
     my $conversation_id =
-        $ws->conversations_obj()->name_to_id("$type/$name");
+        $ws->conversations_obj()->name_to_id("$type/".($name || ''));
 
     return ($ws, $conversation_id, $thread_ts);
 }
@@ -251,6 +251,7 @@ sub _send_queued_single
     $req->uri($context->slack_base_url().'/chat.postMessage');
     $req->method('POST');
     $req->content(encode_json(\%post_data));
+    debug("Attachment count: ".(scalar @attachment_parts));
     debug("Sending message to Slack");
 
     my $res = $ua->request($req);
@@ -273,6 +274,7 @@ sub _send_queued_single
                              $res->as_string());
         return 1;
     }
+    debug("Sent message to Slack, now processing attachments");
 
     my @file_ids;
     for my $part (@attachment_parts) {
@@ -291,6 +293,7 @@ sub _send_queued_single
                  Content      => [
                      filename => $filename,
                      length   => $length,
+                     token    => $ws->token(),
                  ]);
         my $res = $ua->request($uue_req);
         if (not $res->is_success()) {
@@ -310,6 +313,7 @@ sub _send_queued_single
         }
         my $upload_url = $data->{'upload_url'};
         my $file_id = $data->{'file_id'};
+        debug("Got upload URL for '$filename' ($file_id)");
 
 	my $upload_req =
 	    POST($upload_url,
@@ -326,37 +330,43 @@ sub _send_queued_single
                                  $res->as_string());
             return 1;
         }
+        debug("Uploaded '$filename'");
+        push @file_ids, $file_id;
     }
 
-    my $cue_uri =
-        URI->new($context->slack_base_url().
-                 '/files.completeUploadExternal');
-    my $files = encode_json([
-        map { +{ id => $_ } }
-            @file_ids
-    ]);
-    my $cue_req =
-        POST($cue_uri,
-             Content        => [
-                 files      => $files,
-                 token      => $ws->token(),
-                 channel_id => $conversation_id
-             ]);
-    $res = $ua->request($cue_req);
-    if (not $res->is_success()) {
-        print STDERR "Unable to complete uploads, bouncing: ".
-                     $res->as_string()."\n";
-        $self->_write_bounce($message_id,
-                             $res->as_string());
-        return 1;
-    }
-    $data = decode_json($res->decoded_content());
-    if (not $data->{'ok'}) {
-        print STDERR "Unable to complete uploads, bouncing: ".
-                     $res->as_string()."\n";
-        $self->_write_bounce($message_id,
-                             $res->as_string());
-        return 1;
+    if (@file_ids) {
+        debug("Completing uploads");
+        my $cue_uri =
+            URI->new($context->slack_base_url().
+                     '/files.completeUploadExternal');
+        my $files = encode_json([
+            map { +{ id => $_ } }
+                @file_ids
+        ]);
+        my $cue_req =
+            POST($cue_uri,
+                 Content        => [
+                     files      => $files,
+                     token      => $ws->token(),
+                     channel_id => $conversation_id
+                 ]);
+        $res = $ua->request($cue_req);
+        if (not $res->is_success()) {
+            print STDERR "Unable to complete uploads, bouncing: ".
+                         $res->as_string()."\n";
+            $self->_write_bounce($message_id,
+                                 $res->as_string());
+            return 1;
+        }
+        $data = decode_json($res->decoded_content());
+        if (not $data->{'ok'}) {
+            print STDERR "Unable to complete uploads, bouncing: ".
+                         $res->as_string()."\n";
+            $self->_write_bounce($message_id,
+                                 $res->as_string());
+            return 1;
+        }
+        debug("Completed uploads");
     }
     debug("Message sent successfully");
 
