@@ -223,35 +223,16 @@ sub _send_queued_single
     }
 
     my $text_data;
-    my @attachment_reqs;
-    my @temp_files;
+    my @attachment_parts;
     if ($entity->parts() > 0) {
         for (my $i = 0; $i < $entity->parts(); $i++) {
             my $part = $entity->parts($i);
             if (($part->head()->get('Content-Type') =~ /^text\/plain;?/)
                     and not $text_data) {
                 $text_data = $part->bodyhandle()->as_string();
-                next;
+            } else {
+                push @attachment_parts, $part;
             }
-
-            my $filename = $part->head()->recommended_filename();
-            $filename =~ s/\?.*//;
-            my $temp_file = File::Temp->new();
-            print $temp_file $part->bodyhandle()->as_string();
-            $temp_file->flush();
-            push @temp_files, $temp_file;
-            my $uri = URI->new($context->slack_base_url().'/files.upload');
-            my $attachment_req =
-                POST($uri,
-                     Content_Type => 'form-data',
-                     Content      => [
-                         file     => [$temp_file->filename()],
-                         filename => $filename,
-                         title    => $filename,
-                         token    => $ws->token(),
-                         channels => $conversation_id
-                     ]);
-            push @attachment_reqs, $attachment_req;
         }
     } else {
         $text_data = $entity->bodyhandle()->as_string();
@@ -293,8 +274,25 @@ sub _send_queued_single
         return 1;
     }
 
-    for my $attachment_req (@attachment_reqs) {
-        my $res = $ua->request($attachment_req);
+    my @file_ids;
+    for my $part (@attachment_parts) {
+	my $filename = $part->head()->recommended_filename();
+	$filename =~ s/\?.*//;
+	my $temp_file = File::Temp->new();
+	print $temp_file $part->bodyhandle()->as_string();
+	$temp_file->flush();
+        my $length = (stat($temp_file->filename()))[7];
+
+	my $uri =
+	    URI->new($content->slack_base_url().
+		     '/files.getUploadURLExternal');
+        my $uue_req =
+            POST($uri,
+                 Content      => [
+                     filename => $filename,
+                     length   => $length,
+                 ]);
+        my $res = $ua->request($uue_req);
         if (not $res->is_success()) {
             print STDERR "Unable to send attachment, bouncing: ".
                          $res->as_string()."\n";
@@ -304,10 +302,61 @@ sub _send_queued_single
         }
         my $data = decode_json($res->decoded_content());
         if (not $data->{'ok'}) {
+            print STDERR "Unable to send attachment, bouncing: ".
+                         $res->as_string()."\n";
             $self->_write_bounce($message_id,
                                  $res->as_string());
             return 1;
         }
+        my $upload_url = $data->{'upload_url'};
+        my $file_id = $data->{'file_id'};
+
+	my $upload_req =
+	    POST($upload_url,
+		 Content_Type => 'form-data',
+		 Content      => [
+                     file     => [$temp_file->filename()],
+                     token    => $ws->token(),
+                 ]);
+        my $res = $ua->request($upload_req);
+        if (not $res->is_success()) {
+            print STDERR "Unable to send attachment, bouncing: ".
+                         $res->as_string()."\n";
+            $self->_write_bounce($message_id,
+                                 $res->as_string());
+            return 1;
+        }
+    }
+
+    my $cue_uri =
+        URI->new($content->slack_base_url().
+                 '/files.completeUploadExternal');
+    my $files = encode_json([
+        map { +{ id => $_ } }
+            @file_ids
+    ]);
+    my $cue_req =
+        POST($cue_uri,
+             Content        => [
+                 files      => $files,
+                 token      => $ws->token(),
+                 channel_id => $conversation_id
+             ]);
+    my $res = $ua->request($uue_req);
+    if (not $res->is_success()) {
+        print STDERR "Unable to complete uploads, bouncing: ".
+                     $res->as_string()."\n";
+        $self->_write_bounce($message_id,
+                             $res->as_string());
+        return 1;
+    }
+    my $data = decode_json($res->decoded_content());
+    if (not $data->{'ok'}) {
+        print STDERR "Unable to complete uploads, bouncing: ".
+                     $res->as_string()."\n";
+        $self->_write_bounce($message_id,
+                             $res->as_string());
+        return 1;
     }
     debug("Message sent successfully");
 
